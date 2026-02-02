@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import socket
+import sys
 
 # ===============================
 # GPIO 핀 번호 설정 (BCM)
@@ -32,17 +33,49 @@ radio_stations = [
 # mpv IPC 설정
 # ===============================
 MPV_SOCK = "/tmp/wr_mpv.sock"
-player_process = None
+player_process = None  # 우리가 직접 띄운 mpv만 여기에 담음
 
 # 재생 상태
 is_playing = False
 
 # ===============================
-# 튜닝 파라미터 (취향/환경 따라 조절)
+# 튜닝 파라미터
 # ===============================
-ROTATION_DEBOUNCE_SEC = 0.10   # 엔코더 디바운스 (너무 민감하면 올려)
-PLAY_SWITCH_DELAY_SEC = 0.40  # 마지막 회전 후 이 시간 멈추면 재생 전환
-SAVE_DELAY_SEC = 5.0          # 마지막 변경 후 이 시간 멈추면 last_station 저장
+ROTATION_DEBOUNCE_SEC = 0.10
+PLAY_SWITCH_DELAY_SEC = 0.40
+SAVE_DELAY_SEC = 5.0
+
+# ===============================
+# (선택이지만 강추) 중복 실행 방지 락
+# ===============================
+LOCK_FILE = "/tmp/wr_radio.lock"
+
+def acquire_lock():
+    # 이미 실행 중이면 바로 종료 (중복 run_radio가 mpv를 꼬이게 함)
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                pid = int((f.read() or "0").strip())
+            if pid > 0:
+                # pid가 살아있는지 확인
+                os.kill(pid, 0)
+                print(f"❌ 이미 run_radio.py가 실행 중입니다 (pid={pid}).")
+                sys.exit(1)
+        except ProcessLookupError:
+            # 락은 남았는데 프로세스는 죽었음 -> stale lock
+            pass
+        except Exception:
+            pass
+
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+def release_lock():
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
 
 # ===============================
 # 설정 로드/저장
@@ -71,27 +104,33 @@ def save_last_station(index):
 # ===============================
 # mpv IPC 유틸
 # ===============================
+def _can_connect_mpv(sock_path=MPV_SOCK, timeout=0.2):
+    """소켓 파일이 존재하고 실제로 connect 가능한지"""
+    if not os.path.exists(sock_path):
+        return False
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(sock_path)
+        s.close()
+        return True
+    except Exception:
+        return False
+
 def _wait_for_mpv_sock(timeout_sec=8.0):
     """mpv IPC 소켓이 '실제로 연결 가능'해질 때까지 대기"""
     start = time.time()
     while time.time() - start < timeout_sec:
-        if os.path.exists(MPV_SOCK):
-            try:
-                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                s.settimeout(0.2)
-                s.connect(MPV_SOCK)
-                s.close()
-                return True
-            except Exception:
-                pass
+        if _can_connect_mpv(MPV_SOCK, timeout=0.2):
+            return True
         time.sleep(0.05)
     return False
 
-
 def mpv_cmd(payload):
-    """mpv IPC로 JSON 명령 전송"""
+    """mpv IPC로 JSON 명령 전송 (응답은 안 받아도 됨)"""
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(0.5)
         s.connect(MPV_SOCK)
         s.send((json.dumps(payload) + "\n").encode("utf-8"))
         s.close()
@@ -100,31 +139,36 @@ def mpv_cmd(payload):
         return False
 
 def ensure_mpv_running():
-    """mpv를 한 번만 실행해 상주시킴"""
+    """
+    mpv를 한 번만 실행해 상주시킴 (중요!)
+    - 소켓이 '연결 가능'하면: 이미 떠 있다고 보고 재사용 (mpv 새로 안 띄움)
+    - 소켓 파일은 있는데 연결이 안 되면: 죽은 소켓 -> 삭제 후 재시작
+    """
     global player_process
 
-    # 기존 소켓 정리(비정상 종료 후 남아있을 수 있음)
+    # 1) 이미 mpv IPC가 살아있으면 재사용
+    if _can_connect_mpv(MPV_SOCK):
+        # 우리가 직접 띄운 프로세스가 아니므로 player_process는 None 유지
+        return True
+
+    # 2) 소켓 파일은 있는데 connect가 안 되면 stale -> 지움
     try:
         if os.path.exists(MPV_SOCK):
             os.remove(MPV_SOCK)
     except Exception:
         pass
 
-    log_path = "/tmp/mpv_ipc.log"
-    logf = open(log_path, "w")
-    
-    # mpv 실행 (idle=yes: 재생 없어도 살아있음)
-    # 버퍼 줄이기 옵션 포함 (끊김 생기면 cache-secs 등을 올리면 됨)
+    # 3) mpv 새로 실행
     cmd = [
         "mpv",
         "--no-video",
         "--idle=yes",
         "--no-terminal",
 
-        "--no-config",            # 사용자 설정(~/.config/mpv) 무시 (속도/예측성↑)
-        "--load-scripts=no",      # lua 스크립트(osc 등) 로딩 끄기
-        "--osc=no",               # 화면 컨트롤 끄기 (혹시 켜져있다면)
-        "--input-default-bindings=no",  # 기본 키바인딩 끄기 (불필요)
+        "--no-config",
+        "--load-scripts=no",
+        "--osc=no",
+        "--input-default-bindings=no",
 
         "--input-ipc-server=" + MPV_SOCK,
         "--volume=50",
@@ -149,26 +193,14 @@ def ensure_mpv_running():
     ok = _wait_for_mpv_sock(timeout_sec=8.0)
     if not ok:
         rc = player_process.poll()
-        logf.close()
         print("❌ mpv IPC 소켓 생성 실패(시간 초과)")
-
         if rc is not None:
             print(f"mpv가 즉시 종료됨. return code: {rc}")
         else:
-            print("mpv는 살아있지만 소켓이 없음(옵션/경로 문제 가능)")
-
-        # 로그 보여주기
-        try:
-            with open(log_path, "r") as f:
-                print("----- /tmp/mpv_ipc.log -----")
-                print(f.read().strip() or "(empty)")
-                print("----------------------------")
-        except Exception as e:
-            print(f"로그 읽기 실패: {e}")
+            print("mpv는 살아있지만 소켓이 없음(권한/경로/중복 실행 가능)")
 
         return False
 
-    logf.close()
     return True
 
 def stop_playback():
@@ -209,6 +241,8 @@ def display_station(current_index):
 def main():
     global is_playing
 
+    acquire_lock()
+
     # GPIO 초기화
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
@@ -218,10 +252,11 @@ def main():
 
     current_index = load_last_station()
 
-    # mpv 상주 실행
+    # mpv 상주 실행(또는 재사용)
     if not ensure_mpv_running():
         print("mpv를 시작할 수 없어 종료합니다.")
         GPIO.cleanup()
+        release_lock()
         return
 
     # 상태 변수
@@ -271,7 +306,7 @@ def main():
                     needs_save = True
                     last_change_time = now
 
-                    # 재생 중이라면 "즉시 전환"이 아니라 "멈춘 후 전환" 예약
+                    # 재생 중이면 "멈춘 후 전환" 예약
                     if is_playing:
                         pending_play = True
                         last_station_change_time = now
@@ -290,18 +325,16 @@ def main():
                 else:
                     play_station(current_index)
 
-                # 변경 시각 기록(저장/재생 모두)
                 now = time.time()
                 needs_save = True
                 last_change_time = now
 
-                # 버튼 디바운스
                 time.sleep(0.3)
 
             keyLastState = keyState
 
             # ----------------------------
-            # (중요) 로터리 멈춘 뒤 일정 시간 후에만 재생 전환
+            # 로터리 멈춘 뒤 일정 시간 후에만 재생 전환
             # ----------------------------
             if pending_play and (time.time() - last_station_change_time) >= PLAY_SWITCH_DELAY_SEC:
                 play_station(current_index)
@@ -318,18 +351,16 @@ def main():
 
     except KeyboardInterrupt:
         print("\n\n프로그램 종료")
-        # 종료 시 최종 저장
         if needs_save:
             save_last_station(current_index)
 
-        # 재생 중지(프로세스는 kill할 수도 있고, 남겨도 되지만 여기서는 정리)
         try:
             stop_playback()
         except Exception:
             pass
 
     finally:
-        # mpv 프로세스 종료
+        # 우리가 직접 띄운 mpv만 종료 (재사용한 mpv까지 죽이면 곤란할 수 있음)
         try:
             if player_process:
                 player_process.terminate()
@@ -337,14 +368,17 @@ def main():
         except Exception:
             pass
 
-        # IPC 소켓 정리
-        try:
-            if os.path.exists(MPV_SOCK):
-                os.remove(MPV_SOCK)
-        except Exception:
-            pass
+        # player_process가 None이면 "다른 곳에서 띄운 mpv 재사용"이므로 소켓 지우지 않음
+        # (원하면 정책적으로 always cleanup 하게 바꿀 수 있음)
+        if player_process:
+            try:
+                if os.path.exists(MPV_SOCK):
+                    os.remove(MPV_SOCK)
+            except Exception:
+                pass
 
         GPIO.cleanup()
+        release_lock()
 
 if __name__ == "__main__":
     main()
