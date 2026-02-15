@@ -78,7 +78,8 @@ is_playing = False
 # ===============================
 ROTATION_DEBOUNCE_SEC = 0.10
 PLAY_SWITCH_DELAY_SEC = 0.40
-SAVE_DELAY_SEC = 5.0
+LCD_UPDATE_DELAY = 0.50
+SAVE_DELAY_SEC = 1.0
 LOCK_FILE = "/tmp/wr_radio.lock"
 
 # ===============================
@@ -468,14 +469,14 @@ def main():
                 now = time.time()
                 if now - last_rotation_time > ROTATION_DEBOUNCE_SEC:
                     if s2State != s1State:
-                        current_index = (current_index + 1) % len(radio_stations)
-                    else:
                         current_index = (current_index - 1) % len(radio_stations)
+                    else:
+                        current_index = (current_index + 1) % len(radio_stations)
 
                     print(f"→ {radio_stations[current_index]['name']}")
                     
                     # LCD 업데이트
-                    display_radio_info(current_index)
+                    #display_radio_info(current_index)
 
                     needs_save = True
                     last_change_time = now
@@ -510,10 +511,19 @@ def main():
                 play_station(current_index)
                 pending_play = False
 
+
+            # 로터리 멈춘 후 LCD 업데이트 (저장 로직 위에 추가)
+            if needs_save and (time.time() - last_change_time) >= LCD_UPDATE_DELAY:  # 0.5초 후 업데이트
+                if not hasattr(main, 'lcd_updated') or not main.lcd_updated:
+                    display_radio_info(current_index)
+                    main.lcd_updated = True
+
             # 저장
             if needs_save and (time.time() - last_change_time) >= SAVE_DELAY_SEC:
                 save_last_station(current_index)
                 needs_save = False
+                if hasattr(main, 'lcd_updated'):
+                    main.lcd_updated = False
 
             time.sleep(0.001)
 
