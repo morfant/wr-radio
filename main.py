@@ -9,18 +9,18 @@ import subprocess
 import socket
 import sys
 import spidev
+import requests
+import threading
 from PIL import Image, ImageDraw, ImageFont
 
 # ===============================
 # GPIO 핀 번호 설정 (BCM)
 # ===============================
-# 로터리 엔코더
-S1 = 17   # CLK
-S2 = 27   # DT
-KEY = 22  # 버튼
+S1 = 17   # 로터리 CLK
+S2 = 27   # 로터리 DT
+KEY = 22  # 로터리 버튼
 
-# LCD
-CS_PIN = 26
+CS_PIN = 26   # LCD
 DC_PIN = 19
 RST_PIN = 13
 BL_PIN = 6
@@ -28,59 +28,283 @@ BL_PIN = 6
 # ===============================
 # 설정 파일
 # ===============================
-CONFIG_FILE = "/home/wr-radio/wr-radio/last_station.json"
+CONFIG_FILE = "/home/wr-radio/wr-radio/config.json"
+LOCK_FILE = "/tmp/wr_radio.lock"
 
-radio_stations = [
-    {"name": "Jeju Georo",        "url": "https://locus.creacast.com:9443/jeju_georo.mp3",             "color": (100, 200, 255)},
-    {"name": "London Stave Hill", "url": "https://locus.creacast.com:9443/london_stave_hill.mp3",      "color": (255, 100, 100)},
-    {"name": "Wicken Fen",        "url": "https://locus.creacast.com:9443/wicken_wicken_fen.mp3",      "color": (100, 255, 100)},
-    {"name": "New York Wave Farm","url": "https://locus.creacast.com:9443/acra_wave_farm.mp3",         "color": (255, 200, 50)},
-    {"name": "Marseille",         "url": "https://locus.creacast.com:9443/marseille_frioul.mp3",       "color": (200, 100, 255)},
+# 기본 스테이션 목록
+DEFAULT_STATIONS = [
+    {
+        "name": "Jeju Georo",
+        "url": "https://locus.creacast.com:9443/jeju_georo.mp3",
+        "location": "Jeju, South Korea",
+        "lat": 33.509306,
+        "lon": 126.562000,
+        "color": [100, 200, 255]
+    },
+    {
+        "name": "London Stave Hill",
+        "url": "https://locus.creacast.com:9443/london_stave_hill.mp3",
+        "location": "London, UK",
+        "lat": 51.502111,
+        "lon": -0.040278,
+        "color": [255, 100, 100]
+    },
+    {
+        "name": "New York Wave Farm",
+        "url": "https://locus.creacast.com:9443/acra_wave_farm.mp3",
+        "location": "Acra, New York",
+        "lat": 42.319111,
+        "lon": -74.076611,
+        "color": [255, 200, 50]
+    },
+    {
+        "name": "Jasper Ridge",
+        "url": "https://locus.creacast.com:9443/jasper_ridge_birdcast.mp3",
+        "location": "California, USA",
+        "lat": 37.403611,
+        "lon": -122.238000,
+        "color": [100, 255, 100]
+    },
+    {
+        "name": "Mt. Fuji Forest",
+        "url": "http://mp3s.nc.u-tokyo.ac.jp/Fuji_CyberForest.mp3",
+        "location": "Yamanashi, Japan",
+        "lat": 35.4088,
+        "lon": 138.86,
+        "color": [200, 100, 255]
+    }
 ]
 
 # ===============================
-# SPI 초기화
+# 전역 변수
 # ===============================
-spi = spidev.SpiDev()
-spi.open(0, 0)
-spi.max_speed_hz = 8000000
-spi.mode = 0
+weather_cache = {}
+WEATHER_CACHE_TIME = 600  # 10분
+weather_lock = threading.Lock()
 
-# ===============================
-# GPIO 초기화
-# ===============================
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BCM)
+OPENWEATHER_API_KEY = ""
+ENABLE_WEATHER = False
+radio_stations = []
 
-# 로터리 엔코더
-GPIO.setup(S1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(S2, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(KEY, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-# LCD
-GPIO.setup(CS_PIN, GPIO.OUT)
-GPIO.setup(DC_PIN, GPIO.OUT)
-GPIO.setup(RST_PIN, GPIO.OUT)
-GPIO.setup(BL_PIN, GPIO.OUT)
-
-# PWM 객체
+spi = None
 pwm_backlight = None
-
-# ===============================
-# mpv IPC 설정
-# ===============================
-MPV_SOCK = "/tmp/wr_mpv.sock"
 player_process = None
 is_playing = False
 
-# ===============================
-# 튜닝 파라미터
-# ===============================
+MPV_SOCK = "/tmp/wr_mpv.sock"
 ROTATION_DEBOUNCE_SEC = 0.10
 PLAY_SWITCH_DELAY_SEC = 0.40
 LCD_UPDATE_DELAY = 0.50
 SAVE_DELAY_SEC = 1.0
-LOCK_FILE = "/tmp/wr_radio.lock"
+
+# ===============================
+# 설정 관리
+# ===============================
+def load_config():
+    """설정 파일 로드"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️  설정 파일 로드 실패: {e}")
+    return None
+
+def save_config(config):
+    """설정 파일 저장"""
+    try:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"❌ 설정 저장 실패: {e}")
+        return False
+
+def create_default_config():
+    """기본 설정 파일 생성"""
+    config = {
+        "openweather_api_key": "",
+        "last_station": 0,
+        "stations": DEFAULT_STATIONS
+    }
+    
+    if save_config(config):
+        print("✅ 기본 config.json 생성 완료")
+        return config
+    return None
+
+def setup_config():
+    """설정 초기화 또는 로드"""
+    config = load_config()
+    
+    if config is None:
+        print("\n" + "="*60)
+        print("📻 WR-Radio 첫 실행 설정")
+        print("="*60)
+        print()
+        print("config.json 파일이 없습니다. 기본 설정을 생성합니다.")
+        print()
+        
+        config = create_default_config()
+        if config is None:
+            print("❌ 설정 파일 생성 실패")
+            return None
+        
+        print()
+        print("🌤️  OpenWeatherMap API 키 설정 (선택사항)")
+        print("-" * 60)
+        print("무료 API 키 발급: https://openweathermap.org/appid")
+        print("(엔터만 누르면 날씨 기능 비활성화)")
+        print()
+        
+        api_key = input("API 키 입력: ").strip()
+        
+        if api_key:
+            config['openweather_api_key'] = api_key
+            save_config(config)
+            print("✅ API 키 저장 완료!")
+        else:
+            print("⚠️  날씨 기능이 비활성화됩니다.")
+        
+        print()
+        print("="*60)
+        print("💡 스테이션 목록 수정: nano ~/wr-radio/wr-radio/config.json")
+        print("="*60)
+        print()
+    
+    # 검증
+    if 'stations' not in config or not config['stations']:
+        print("⚠️  스테이션 목록이 비어있습니다. 기본 목록 사용")
+        config['stations'] = DEFAULT_STATIONS
+    
+    # color를 tuple로 변환
+    for station in config['stations']:
+        if isinstance(station.get('color'), list):
+            station['color'] = tuple(station['color'])
+        elif 'color' not in station:
+            station['color'] = (100, 200, 255)
+    
+    return config
+
+def save_last_station(index):
+    """마지막 스테이션 저장"""
+    try:
+        config = load_config()
+        if config:
+            config['last_station'] = index
+            save_config(config)
+            print("💾 저장 완료")
+    except Exception as e:
+        print(f"저장 실패: {e}")
+
+def acquire_lock():
+    """프로세스 잠금"""
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                pid = int((f.read() or "0").strip())
+            if pid > 0:
+                os.kill(pid, 0)
+                print(f"❌ 이미 실행 중입니다 (pid={pid}).")
+                sys.exit(1)
+        except ProcessLookupError:
+            pass
+        except Exception:
+            pass
+
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+def release_lock():
+    """프로세스 잠금 해제"""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
+
+# ===============================
+# 날씨 정보
+# ===============================
+def fetch_weather_background(lat, lon, location_name):
+    """백그라운드에서 날씨 가져오기"""
+    if not ENABLE_WEATHER:
+        return
+    
+    cache_key = f"{lat},{lon}"
+    
+    try:
+        url = f"http://api.openweathermap.org/data/2.5/weather"
+        params = {
+            'lat': lat,
+            'lon': lon,
+            'appid': OPENWEATHER_API_KEY,
+            'units': 'metric',
+            'lang': 'kr'
+        }
+        
+        response = requests.get(url, params=params, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            temp = int(data['main']['temp'])
+            
+            icon_map = {
+                '01': '☀️', '02': '🌤️', '03': '☁️', '04': '☁️',
+                '09': '🌧️', '10': '🌦️', '11': '⛈️', '13': '🌨️', '50': '🌫️'
+            }
+            
+            icon_code = data['weather'][0]['icon'][:2]
+            icon = icon_map.get(icon_code, '🌤️')
+            weather_text = f"{icon} {temp}°C"
+            
+            with weather_lock:
+                weather_cache[cache_key] = (time.time(), weather_text)
+            print(f"🌤️  날씨 업데이트: {location_name} - {weather_text}")
+        else:
+            print(f"⚠️  날씨 HTTP {response.status_code}: {location_name}")
+            
+    except Exception as e:
+        print(f"⚠️  날씨 실패: {location_name} - {str(e)[:50]}")
+
+def get_cached_weather(lat, lon):
+    """캐시된 날씨 가져오기"""
+    if not ENABLE_WEATHER:
+        return ""
+    
+    cache_key = f"{lat},{lon}"
+    with weather_lock:
+        if cache_key in weather_cache:
+            cached_time, cached_data = weather_cache[cache_key]
+            return cached_data
+    return ""
+
+def should_update_weather(lat, lon):
+    """날씨 업데이트 필요 여부"""
+    if not ENABLE_WEATHER:
+        return False
+    
+    cache_key = f"{lat},{lon}"
+    with weather_lock:
+        if cache_key not in weather_cache:
+            return True
+        cached_time, _ = weather_cache[cache_key]
+        return (time.time() - cached_time) >= WEATHER_CACHE_TIME
+
+def start_weather_update(station_index):
+    """백그라운드 날씨 업데이트"""
+    if not ENABLE_WEATHER:
+        return
+    
+    station = radio_stations[station_index]
+    if should_update_weather(station["lat"], station["lon"]):
+        thread = threading.Thread(
+            target=fetch_weather_background,
+            args=(station["lat"], station["lon"], station["location"]),
+            daemon=True
+        )
+        thread.start()
 
 # ===============================
 # 백라이트 제어
@@ -204,6 +428,12 @@ def display_radio_info(current_index):
     """현재 라디오 스테이션 정보 표시"""
     station = radio_stations[current_index]
     
+    # 백그라운드 날씨 업데이트
+    start_weather_update(current_index)
+    
+    # 캐시된 날씨 가져오기
+    weather = get_cached_weather(station["lat"], station["lon"])
+    
     image = Image.new('RGB', (240, 240), (15, 15, 15))
     draw = ImageDraw.Draw(image)
     
@@ -211,16 +441,17 @@ def display_radio_info(current_index):
         font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
         font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
         font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+        font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
     except:
         font_large = ImageFont.load_default()
         font_medium = ImageFont.load_default()
         font_small = ImageFont.load_default()
+        font_tiny = ImageFont.load_default()
     
     # 상단 바 (스테이션 색상)
     draw.rectangle([0, 0, 239, 50], fill=station["color"])
     
-    # 스테이션 이름 (상단)
-    # 긴 이름 처리
+    # 스테이션 이름
     name_parts = station["name"].split()
     if len(name_parts) > 2:
         line1 = " ".join(name_parts[:2])
@@ -236,17 +467,33 @@ def display_radio_info(current_index):
             x = (240 - text_width) // 2
             draw.text((x, 12), station["name"], font=font_large, fill=(255, 255, 255))
     
+    # 위치 정보
+    bbox = draw.textbbox((0, 0), station["location"], font=font_tiny)
+    text_width = bbox[2] - bbox[0]
+    x = (240 - text_width) // 2
+    draw.text((x, 60), station["location"], font=font_tiny, fill=(150, 150, 150))
+    
+    # 날씨 정보
+    if weather:
+        bbox = draw.textbbox((0, 0), weather, font=font_small)
+        text_width = bbox[2] - bbox[0]
+        x = (240 - text_width) // 2
+        draw.text((x, 80), weather, font=font_small, fill=(100, 200, 255))
+        status_y = 110
+    else:
+        status_y = 90
+    
     # 재생 상태
     status = "▶ PLAYING" if is_playing else "⏸ PAUSED"
     status_color = (100, 255, 100) if is_playing else (255, 100, 100)
     bbox = draw.textbbox((0, 0), status, font=font_medium)
     text_width = bbox[2] - bbox[0]
     x = (240 - text_width) // 2
-    draw.text((x, 90), status, font=font_medium, fill=status_color)
+    draw.text((x, status_y), status, font=font_medium, fill=status_color)
     
-    # 음파 애니메이션 (재생 중일 때)
+    # 음파 애니메이션
     if is_playing:
-        center_y = 140
+        center_y = status_y + 40
         for i in range(5):
             height = 10 + (i % 3) * 8
             x_pos = 60 + i * 25
@@ -258,60 +505,12 @@ def display_radio_info(current_index):
     bbox = draw.textbbox((0, 0), station_num, font=font_medium)
     text_width = bbox[2] - bbox[0]
     x = (240 - text_width) // 2
-    draw.text((x, 180), station_num, font=font_medium, fill=(150, 150, 150))
+    draw.text((x, 190), station_num, font=font_medium, fill=(150, 150, 150))
     
     # 하단 안내
     draw.text((30, 215), "Turn to switch", font=font_small, fill=(100, 100, 100))
     
     display_image(image)
-
-# ===============================
-# 설정 로드/저장
-# ===============================
-def load_last_station():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                data = json.load(f)
-                index = int(data.get('last_index', 0))
-                if 0 <= index < len(radio_stations):
-                    return index
-        except Exception:
-            pass
-    return 0
-
-def save_last_station(index):
-    try:
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump({'last_index': index}, f)
-        print("💾 저장 완료")
-    except Exception as e:
-        print(f"저장 실패: {e}")
-
-def acquire_lock():
-    if os.path.exists(LOCK_FILE):
-        try:
-            with open(LOCK_FILE, "r") as f:
-                pid = int((f.read() or "0").strip())
-            if pid > 0:
-                os.kill(pid, 0)
-                print(f"❌ 이미 실행 중입니다 (pid={pid}).")
-                sys.exit(1)
-        except ProcessLookupError:
-            pass
-        except Exception:
-            pass
-
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-
-def release_lock():
-    try:
-        if os.path.exists(LOCK_FILE):
-            os.remove(LOCK_FILE)
-    except Exception:
-        pass
 
 # ===============================
 # mpv IPC 유틸
@@ -414,19 +613,57 @@ def play_station(index):
         print("❌ 재생 실패")
         is_playing = False
     
-    # LCD 업데이트
     display_radio_info(index)
 
 # ===============================
 # 메인
 # ===============================
 def main():
-    global is_playing
-
+    global is_playing, OPENWEATHER_API_KEY, ENABLE_WEATHER, radio_stations, spi
+    
+    # 설정 로드
+    config = setup_config()
+    if config is None:
+        print("❌ 설정 초기화 실패")
+        return
+    
+    # 전역 변수 설정
+    OPENWEATHER_API_KEY = config.get('openweather_api_key', '')
+    ENABLE_WEATHER = bool(OPENWEATHER_API_KEY)
+    radio_stations = config['stations']
+    current_index = config.get('last_station', 0)
+    
+    if not (0 <= current_index < len(radio_stations)):
+        current_index = 0
+    
+    if ENABLE_WEATHER:
+        print(f"🌤️  날씨 기능 활성화")
+    else:
+        print(f"⚠️  날씨 기능 비활성화 (API 키 없음)")
+    
+    print(f"📻 스테이션 {len(radio_stations)}개 로드")
+    
     acquire_lock()
-
-    current_index = load_last_station()
-
+    
+    # SPI 초기화
+    spi = spidev.SpiDev()
+    spi.open(0, 0)
+    spi.max_speed_hz = 8000000
+    spi.mode = 0
+    
+    # GPIO 초기화
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
+    
+    GPIO.setup(S1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(S2, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(KEY, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    
+    GPIO.setup(CS_PIN, GPIO.OUT)
+    GPIO.setup(DC_PIN, GPIO.OUT)
+    GPIO.setup(RST_PIN, GPIO.OUT)
+    GPIO.setup(BL_PIN, GPIO.OUT)
+    
     # LCD 초기화
     print("LCD 초기화 중...")
     init_display(rotation=90)
@@ -474,9 +711,6 @@ def main():
                         current_index = (current_index + 1) % len(radio_stations)
 
                     print(f"→ {radio_stations[current_index]['name']}")
-                    
-                    # LCD 업데이트
-                    #display_radio_info(current_index)
 
                     needs_save = True
                     last_change_time = now
@@ -511,9 +745,8 @@ def main():
                 play_station(current_index)
                 pending_play = False
 
-
-            # 로터리 멈춘 후 LCD 업데이트 (저장 로직 위에 추가)
-            if needs_save and (time.time() - last_change_time) >= LCD_UPDATE_DELAY:  # 0.5초 후 업데이트
+            # 로터리 멈춘 후 LCD 업데이트
+            if needs_save and (time.time() - last_change_time) >= LCD_UPDATE_DELAY:
                 if not hasattr(main, 'lcd_updated') or not main.lcd_updated:
                     display_radio_info(current_index)
                     main.lcd_updated = True
@@ -556,7 +789,8 @@ def main():
             pwm_backlight.stop()
 
         GPIO.cleanup()
-        spi.close()
+        if spi:
+            spi.close()
         release_lock()
 
 if __name__ == "__main__":
