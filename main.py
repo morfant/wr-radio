@@ -16,8 +16,8 @@ from PIL import Image, ImageDraw, ImageFont
 # ===============================
 # 로터리 엔코더
 S1 = 17   # CLK
-S2 = 22   # DT
-KEY = 23  # 버튼
+S2 = 27   # DT
+KEY = 22  # 버튼
 
 # LCD
 CS_PIN = 26

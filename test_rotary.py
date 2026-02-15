@@ -3,8 +3,8 @@ import time
 
 # GPIO 핀 번호 설정
 S1 = 17
-S2 = 22
-KEY = 23
+S2 = 27
+KEY = 22
 
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -27,10 +27,10 @@ try:
         if s1State != s1LastState:
             if s2State != s1State:
                 counter += 1
-                print(f"↑ 시계방향: {counter}")
+                print(f"↑ 반시계방향: {counter}")
             else:
                 counter -= 1
-                print(f"↓ 반시계방향: {counter}")
+                print(f"↓ 시계방향: {counter}")
         
         s1LastState = s1State
         
