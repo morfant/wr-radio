@@ -1,0 +1,46 @@
+{
+  "openweather_api_key": "",
+  "last_station": 0,
+  "stations": [
+    {
+      "name": "Jeju Georo",
+      "url": "https://locus.creacast.com:9443/jeju_georo.mp3",
+      "location": "Jeju, South Korea",
+      "lat": 33.509306,
+      "lon": 126.562000,
+      "color": [100, 200, 255]
+    },
+    {
+      "name": "London Stave Hill",
+      "url": "https://locus.creacast.com:9443/london_stave_hill.mp3",
+      "location": "London, UK",
+      "lat": 51.502111,
+      "lon": -0.040278,
+      "color": [255, 100, 100]
+    },
+    {
+      "name": "New York Wave Farm",
+      "url": "https://locus.creacast.com:9443/acra_wave_farm.mp3",
+      "location": "Acra, New York",
+      "lat": 42.319111,
+      "lon": -74.076611,
+      "color": [255, 200, 50]
+    },
+    {
+      "name": "Jasper Ridge",
+      "url": "https://locus.creacast.com:9443/jasper_ridge_birdcast.mp3",
+      "location": "California, USA",
+      "lat": 37.403611,
+      "lon": -122.238000,
+      "color": [100, 255, 100]
+    },
+    {
+      "name": "Mt. Fuji Forest",
+      "url": "http://mp3s.nc.u-tokyo.ac.jp/Fuji_CyberForest.mp3",
+      "location": "Yamanashi, Japan",
+      "lat": 35.4088,
+      "lon": 138.86,
+      "color": [200, 100, 255]
+    }
+  ]
+}
