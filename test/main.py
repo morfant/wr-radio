@@ -1,0 +1,1046 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import RPi.GPIO as GPIO
+import time
+import json
+import os
+import subprocess
+import socket
+import sys
+import spidev
+import requests
+import threading
+from PIL import Image, ImageDraw, ImageFont
+
+# ===============================
+# GPIO 핀 번호 설정 (BCM)
+# ===============================
+S1 = 17   # 로터리 CLK
+S2 = 27   # 로터리 DT
+KEY = 22  # 로터리 버튼
+
+CS_PIN = 26   # LCD
+DC_PIN = 19
+RST_PIN = 13
+BL_PIN = 6
+
+# ===============================
+# 설정 파일
+# ===============================
+CONFIG_FILE = "/home/wr-radio/wr-radio/config.json"
+LOCK_FILE = "/tmp/wr_radio.lock"
+
+# 기본 스테이션 목록
+DEFAULT_STATIONS = [
+    {
+        "name": "Jeju Georo",
+        "url": "https://locus.creacast.com:9443/jeju_georo.mp3",
+        "location": "Jeju, South Korea",
+        "lat": 33.509306,
+        "lon": 126.562000,
+        "color": [100, 200, 255]
+    },
+    {
+        "name": "London Stave Hill",
+        "url": "https://locus.creacast.com:9443/london_stave_hill.mp3",
+        "location": "London, UK",
+        "lat": 51.502111,
+        "lon": -0.040278,
+        "color": [255, 100, 100]
+    },
+    {
+        "name": "New York Wave Farm",
+        "url": "https://locus.creacast.com:9443/acra_wave_farm.mp3",
+        "location": "Acra, New York",
+        "lat": 42.319111,
+        "lon": -74.076611,
+        "color": [255, 200, 50]
+    },
+    {
+        "name": "Jasper Ridge",
+        "url": "https://locus.creacast.com:9443/jasper_ridge_birdcast.mp3",
+        "location": "California, USA",
+        "lat": 37.403611,
+        "lon": -122.238000,
+        "color": [100, 255, 100]
+    },
+    {
+        "name": "Mt. Fuji Forest",
+        "url": "http://mp3s.nc.u-tokyo.ac.jp/Fuji_CyberForest.mp3",
+        "location": "Yamanashi, Japan",
+        "lat": 35.4088,
+        "lon": 138.86,
+        "color": [200, 100, 255]
+    }
+]
+
+# ===============================
+# 전역 변수
+# ===============================
+weather_cache = {}
+WEATHER_CACHE_TIME = 600  # 10분
+weather_lock = threading.Lock()
+
+OPENWEATHER_API_KEY = ""
+ENABLE_WEATHER = False
+radio_stations = []
+
+spi = None
+pwm_backlight = None
+player_process = None
+is_playing = False
+
+# 디스플레이 캐시
+last_displayed_index = -1
+last_displayed_playing = None
+
+# 모드 관리
+current_mode = 'normal'  # 'normal', 'volume', 'brightness'
+mode_enter_time = 0.0
+current_volume = 50
+current_brightness = 100
+animation_frame = 0
+animation_active = False
+animation_start_time = 0.0
+ANIMATION_DURATION = 2.5  # 애니메이션 표시 시간 (2.5초)
+
+MPV_SOCK = "/tmp/wr_mpv.sock"
+ROTATION_DEBOUNCE_SEC = 0.02  # 입력 감지
+PLAY_SWITCH_DELAY_SEC = 0.40  # 오디오 전환
+DISPLAY_UPDATE_DELAY = 0.01   # 입력 멈춘 후 화면 업데이트
+MODE_TIMEOUT_SEC = 3.0        # 모드 자동 복귀 시간
+SAVE_DELAY_SEC = 1.0
+
+# ===============================
+# 설정 관리
+# ===============================
+def load_config():
+    """설정 파일 로드"""
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠️  설정 파일 로드 실패: {e}")
+    return None
+
+def save_config(config):
+    """설정 파일 저장"""
+    try:
+        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"❌ 설정 저장 실패: {e}")
+        return False
+
+def create_default_config():
+    """기본 설정 파일 생성"""
+    config = {
+        "openweather_api_key": "",
+        "last_station": 0,
+        "stations": DEFAULT_STATIONS
+    }
+
+    if save_config(config):
+        print("✅ 기본 config.json 생성 완료")
+        return config
+    return None
+
+def setup_config():
+    """설정 초기화 또는 로드"""
+    config = load_config()
+
+    if config is None:
+        print("\n" + "="*60)
+        print("📻 WR-Radio 첫 실행 설정")
+        print("="*60)
+        print()
+        print("config.json 파일이 없습니다. 기본 설정을 생성합니다.")
+        print()
+
+        config = create_default_config()
+        if config is None:
+            print("❌ 설정 파일 생성 실패")
+            return None
+
+        print()
+        print("🌤️  OpenWeatherMap API 키 설정 (선택사항)")
+        print("-" * 60)
+        print("무료 API 키 발급: https://openweathermap.org/appid")
+        print("(엔터만 누르면 날씨 기능 비활성화)")
+        print()
+
+        api_key = input("API 키 입력: ").strip()
+
+        if api_key:
+            config['openweather_api_key'] = api_key
+            save_config(config)
+            print("✅ API 키 저장 완료!")
+        else:
+            print("⚠️  날씨 기능이 비활성화됩니다.")
+
+        print()
+        print("="*60)
+        print("💡 스테이션 목록 수정: nano ~/wr-radio/wr-radio/config.json")
+        print("="*60)
+        print()
+
+    # 검증
+    if 'stations' not in config or not config['stations']:
+        print("⚠️  스테이션 목록이 비어있습니다. 기본 목록 사용")
+        config['stations'] = DEFAULT_STATIONS
+
+    # color를 tuple로 변환
+    for station in config['stations']:
+        if isinstance(station.get('color'), list):
+            station['color'] = tuple(station['color'])
+        elif 'color' not in station:
+            station['color'] = (100, 200, 255)
+
+    return config
+
+def save_last_station(index):
+    """마지막 스테이션 저장"""
+    try:
+        config = load_config()
+        if config:
+            config['last_station'] = index
+            save_config(config)
+            print("💾 저장 완료")
+    except Exception as e:
+        print(f"저장 실패: {e}")
+
+def acquire_lock():
+    """프로세스 잠금"""
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r") as f:
+                pid = int((f.read() or "0").strip())
+            if pid > 0:
+                os.kill(pid, 0)
+                print(f"❌ 이미 실행 중입니다 (pid={pid}).")
+                sys.exit(1)
+        except ProcessLookupError:
+            pass
+        except Exception:
+            pass
+
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+def release_lock():
+    """프로세스 잠금 해제"""
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception:
+        pass
+
+# ===============================
+# PWM 안전 종료 (중요!)
+# ===============================
+def pwm_safe_close():
+    """PWM 객체를 stop + del + None 처리하여 __del__에서의 예외 가능성 최소화"""
+    global pwm_backlight
+    try:
+        if pwm_backlight is not None:
+            try:
+                pwm_backlight.stop()
+            except Exception:
+                pass
+            try:
+                del pwm_backlight
+            except Exception:
+                pass
+    finally:
+        pwm_backlight = None
+
+# ===============================
+# 날씨 아이콘/애니메이션
+# ===============================
+def draw_weather_icon(draw, x, y, icon_code):
+    """날씨 아이콘을 PIL 도형으로 그리기 (빠름!)"""
+    if icon_code == '01':  # 맑음 - 햇
+        draw.ellipse([x, y, x+14, y+14], fill=(255, 200, 0))
+        cx, cy = x+7, y+7
+        rays = [
+            (cx, y-3, cx, y),
+            (cx, y+14, cx, y+17),
+            (x-3, cy, x, cy),
+            (x+14, cy, x+17, cy),
+            (x-2, y-2, x+1, y+1),
+            (x+13, y-2, x+16, y+1),
+            (x-2, y+13, x+1, y+16),
+            (x+13, y+13, x+16, y+16)
+        ]
+        for ray in rays:
+            draw.line(ray, fill=(255, 200, 0), width=1)
+
+    elif icon_code == '02':  # 약간 흐림 - 햇+구름
+        draw.ellipse([x, y, x+10, y+10], fill=(255, 200, 0))
+        draw.ellipse([x+8, y+6, x+20, y+16], fill=(180, 180, 180))
+        draw.ellipse([x+12, y+4, x+24, y+14], fill=(200, 200, 200))
+
+    elif icon_code in ['03', '04']:  # 흐림 - 구름
+        draw.ellipse([x, y+4, x+12, y+14], fill=(160, 160, 160))
+        draw.ellipse([x+6, y, x+18, y+10], fill=(180, 180, 180))
+        draw.ellipse([x+10, y+4, x+22, y+14], fill=(200, 200, 200))
+
+    elif icon_code in ['09', '10']:  # 비
+        draw.ellipse([x, y, x+12, y+8], fill=(120, 120, 120))
+        draw.ellipse([x+6, y-2, x+18, y+6], fill=(140, 140, 140))
+        for i in range(4):
+            x_pos = x + 2 + i * 4
+            draw.line([x_pos, y+10, x_pos-2, y+16], fill=(100, 150, 255), width=1)
+
+    elif icon_code == '11':  # 천둥
+        draw.ellipse([x, y, x+12, y+8], fill=(80, 80, 80))
+        draw.ellipse([x+6, y-2, x+18, y+6], fill=(100, 100, 100))
+        draw.line([x+10, y+8, x+8, y+12], fill=(255, 255, 0), width=2)
+        draw.line([x+8, y+12, x+10, y+16], fill=(255, 255, 0), width=2)
+
+    elif icon_code == '13':  # 눈
+        draw.ellipse([x, y, x+12, y+8], fill=(180, 180, 180))
+        draw.ellipse([x+6, y-2, x+18, y+6], fill=(200, 200, 200))
+        for i in range(3):
+            x_pos = x + 4 + i * 4
+            y_pos = y + 11 + i * 2
+            draw.line([x_pos-2, y_pos, x_pos+2, y_pos], fill=(255, 255, 255), width=1)
+            draw.line([x_pos, y_pos-2, x_pos, y_pos+2], fill=(255, 255, 255), width=1)
+
+    elif icon_code == '50':  # 안개
+        for i in range(5):
+            y_pos = y + i * 3
+            draw.line([x, y_pos, x+18, y_pos], fill=(150, 150, 150), width=1)
+
+def draw_sine_wave_animation(draw, frame):
+    """흐르는 사인파 애니메이션"""
+    import math
+    center_y = 145
+    amplitude = 12
+    wavelength = 40
+    num_points = 200
+
+    points = []
+    for i in range(num_points):
+        x = i + 20
+        phase = (i + frame * 3) * 2 * math.pi / wavelength
+        y = center_y + amplitude * math.sin(phase)
+        points.append((x, y))
+
+    for i in range(len(points) - 1):
+        draw.line([points[i], points[i+1]], fill=(80, 150, 200), width=2)
+
+def display_mode_indicator(mode, value=None):
+    """상단 오른쪽에 모드 표시 (부분 업데이트)"""
+    image = Image.new('RGB', (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    try:
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    except:
+        font_small = ImageFont.load_default()
+
+    if mode == 'volume':
+        text = f"VOL {value}%"
+        color = (100, 200, 255)
+    elif mode == 'brightness':
+        text = f"BRT {value}%"
+        color = (255, 200, 100)
+    else:
+        return
+
+    bbox = draw.textbbox((0, 0), text, font=font_small)
+    text_width = bbox[2] - bbox[0]
+    x = 240 - text_width - 10
+    draw.text((x, 8), text, font=font_small, fill=color)
+
+    display_image_region(image, 160, 0, 239, 25)
+
+# ===============================
+# 날씨 정보
+# ===============================
+def fetch_weather_background(lat, lon, location_name):
+    """백그라운드에서 날씨 가져오기"""
+    if not ENABLE_WEATHER:
+        return
+
+    cache_key = f"{lat},{lon}"
+
+    try:
+        url = "http://api.openweathermap.org/data/2.5/weather"
+        params = {
+            'lat': lat,
+            'lon': lon,
+            'appid': OPENWEATHER_API_KEY,
+            'units': 'metric',
+            'lang': 'kr'
+        }
+
+        response = requests.get(url, params=params, timeout=5)
+
+        if response.status_code == 200:
+            data = response.json()
+            temp = int(data['main']['temp'])
+            icon_code = data['weather'][0]['icon'][:2]
+
+            weather_data = {'icon': icon_code, 'temp': temp}
+
+            with weather_lock:
+                weather_cache[cache_key] = (time.time(), weather_data)
+            print(f"🌤️  날씨 업데이트: {location_name} - {temp}°C")
+        else:
+            print(f"⚠️  날씨 HTTP {response.status_code}: {location_name}")
+
+    except Exception as e:
+        print(f"⚠️  날씨 실패: {location_name} - {str(e)[:50]}")
+
+def get_cached_weather(lat, lon):
+    """캐시된 날씨 가져오기"""
+    if not ENABLE_WEATHER:
+        return None
+
+    cache_key = f"{lat},{lon}"
+    with weather_lock:
+        if cache_key in weather_cache:
+            _, cached_data = weather_cache[cache_key]
+            return cached_data
+    return None
+
+def should_update_weather(lat, lon):
+    """날씨 업데이트 필요 여부"""
+    if not ENABLE_WEATHER:
+        return False
+
+    cache_key = f"{lat},{lon}"
+    with weather_lock:
+        if cache_key not in weather_cache:
+            return True
+        cached_time, _ = weather_cache[cache_key]
+        return (time.time() - cached_time) >= WEATHER_CACHE_TIME
+
+def start_weather_update(station_index):
+    """백그라운드 날씨 업데이트 - 필요할 때만"""
+    if not ENABLE_WEATHER:
+        return
+
+    station = radio_stations[station_index]
+    if should_update_weather(station["lat"], station["lon"]):
+        thread = threading.Thread(
+            target=fetch_weather_background,
+            args=(station["lat"], station["lon"], station["location"]),
+            daemon=True
+        )
+        thread.start()
+
+# ===============================
+# 백라이트 제어
+# ===============================
+def set_brightness(level):
+    """백라이트 밝기 설정 (10-100)"""
+    global pwm_backlight
+    level = max(10, min(100, level))
+
+    if pwm_backlight is None:
+        pwm_backlight = GPIO.PWM(BL_PIN, 1000)
+        pwm_backlight.start(level)
+        return level
+
+    try:
+        pwm_backlight.ChangeDutyCycle(level)
+        return level
+    except Exception:
+        # PWM이 꼬였으면 완전히 닫고 재생성
+        pwm_safe_close()
+        pwm_backlight = GPIO.PWM(BL_PIN, 1000)
+        pwm_backlight.start(level)
+        return level
+
+# ===============================
+# LCD 저수준 제어
+# ===============================
+def reset():
+    GPIO.output(RST_PIN, GPIO.HIGH)
+    time.sleep(0.01)
+    GPIO.output(RST_PIN, GPIO.LOW)
+    time.sleep(0.01)
+    GPIO.output(RST_PIN, GPIO.HIGH)
+    time.sleep(0.12)
+
+def write_cmd(cmd):
+    GPIO.output(DC_PIN, GPIO.LOW)
+    GPIO.output(CS_PIN, GPIO.LOW)
+    spi.writebytes([cmd])
+    GPIO.output(CS_PIN, GPIO.HIGH)
+
+def write_data(data):
+    GPIO.output(DC_PIN, GPIO.HIGH)
+    GPIO.output(CS_PIN, GPIO.LOW)
+    if isinstance(data, list):
+        spi.writebytes(data)
+    else:
+        spi.writebytes([data])
+    GPIO.output(CS_PIN, GPIO.HIGH)
+
+def set_rotation(rotation):
+    write_cmd(0x36)
+    if rotation == 0:
+        write_data(0x00)
+    elif rotation == 90:
+        write_data(0x60)
+    elif rotation == 180:
+        write_data(0xC0)
+    elif rotation == 270:
+        write_data(0xA0)
+    else:
+        write_data(0x00)
+
+def init_display(rotation=90):
+    reset()
+    write_cmd(0x01)
+    time.sleep(0.15)
+    write_cmd(0x11)
+    time.sleep(0.12)
+    write_cmd(0x3A)
+    write_data(0x05)
+    set_rotation(rotation)
+    write_cmd(0x21)
+    write_cmd(0x13)
+    write_cmd(0x29)
+    time.sleep(0.01)
+
+# ===============================
+# 그래픽 함수
+# ===============================
+def rgb565(r, g, b):
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+
+def set_window(x0, y0, x1, y1):
+    write_cmd(0x2A)
+    write_data([x0 >> 8, x0 & 0xFF, x1 >> 8, x1 & 0xFF])
+    write_cmd(0x2B)
+    write_data([y0 >> 8, y0 & 0xFF, y1 >> 8, y1 & 0xFF])
+    write_cmd(0x2C)
+
+def display_image(image):
+    """전체 화면 업데이트"""
+    if image.size != (240, 240):
+        image = image.resize((240, 240))
+
+    image = image.convert('RGB')
+    set_window(0, 0, 239, 239)
+
+    pixels = []
+    for y in range(240):
+        for x in range(240):
+            r, g, b = image.getpixel((x, y))
+            color = rgb565(r, g, b)
+            pixels.append((color >> 8) & 0xFF)
+            pixels.append(color & 0xFF)
+
+    GPIO.output(DC_PIN, GPIO.HIGH)
+    GPIO.output(CS_PIN, GPIO.LOW)
+
+    chunk_size = 4096
+    for i in range(0, len(pixels), chunk_size):
+        spi.writebytes(pixels[i:i+chunk_size])
+
+    GPIO.output(CS_PIN, GPIO.HIGH)
+
+def display_image_region(image, x0, y0, x1, y1):
+    """화면 특정 영역만 업데이트 (부분 렌더링)"""
+    if image.size != (240, 240):
+        image = image.resize((240, 240))
+
+    image = image.convert('RGB')
+    set_window(x0, y0, x1, y1)
+
+    pixels = []
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            r, g, b = image.getpixel((x, y))
+            color = rgb565(r, g, b)
+            pixels.append((color >> 8) & 0xFF)
+            pixels.append(color & 0xFF)
+
+    GPIO.output(DC_PIN, GPIO.HIGH)
+    GPIO.output(CS_PIN, GPIO.LOW)
+
+    chunk_size = 4096
+    for i in range(0, len(pixels), chunk_size):
+        spi.writebytes(pixels[i:i+chunk_size])
+
+    GPIO.output(CS_PIN, GPIO.HIGH)
+
+# ===============================
+# UI 표시 (최적화 버전)
+# ===============================
+def display_radio_info(current_index, force_full=False):
+    """라디오 정보 표시 - 부분 업데이트 최적화"""
+    global last_displayed_index, last_displayed_playing, animation_frame
+
+    station = radio_stations[current_index]
+    station_changed = (current_index != last_displayed_index)
+    playing_changed = (is_playing != last_displayed_playing)
+
+    if station_changed and should_update_weather(station["lat"], station["lon"]):
+        start_weather_update(current_index)
+
+    weather = get_cached_weather(station["lat"], station["lon"])
+
+    image = Image.new('RGB', (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+
+    try:
+        font_medium = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+        font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    except:
+        font_medium = ImageFont.load_default()
+        font_small = ImageFont.load_default()
+        font_tiny = ImageFont.load_default()
+
+    # 상단(스테이션/위치/날씨) + 하단(번호) : 스테이션 변경시에만
+    if force_full or station_changed:
+        station_name = station["name"]
+
+        bbox = draw.textbbox((0, 0), station_name, font=font_small)
+        text_width = bbox[2] - bbox[0]
+
+        if text_width > 230:
+            bbox = draw.textbbox((0, 0), station_name, font=font_tiny)
+            text_width = bbox[2] - bbox[0]
+            if text_width > 230:
+                try:
+                    font_mini = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
+                except:
+                    font_mini = ImageFont.load_default()
+                bbox = draw.textbbox((0, 0), station_name, font=font_mini)
+                text_width = bbox[2] - bbox[0]
+                x = max(5, (240 - text_width) // 2)
+                draw.text((x, 32), station_name, font=font_mini, fill=(220, 220, 220))
+                location_y = 50
+            else:
+                x = max(5, (240 - text_width) // 2)
+                draw.text((x, 30), station_name, font=font_tiny, fill=(220, 220, 220))
+                location_y = 50
+        else:
+            x = (240 - text_width) // 2
+            draw.text((x, 28), station_name, font=font_small, fill=(220, 220, 220))
+            location_y = 50
+
+        bbox = draw.textbbox((0, 0), station["location"], font=font_tiny)
+        text_width = bbox[2] - bbox[0]
+        x = (240 - text_width) // 2
+        draw.text((x, location_y + 5), station["location"], font=font_tiny, fill=(120, 120, 120))
+
+        if weather:
+            icon_x = 90
+            icon_y = location_y + 25
+            draw_weather_icon(draw, icon_x, icon_y, weather['icon'])
+            temp_text = f"{weather['temp']}°C"
+            draw.text((icon_x + 28, location_y + 27), temp_text, font=font_small, fill=(100, 200, 255))
+
+        display_image_region(image, 0, 0, 239, 110)
+
+        station_num = f"{current_index + 1} / {len(radio_stations)}"
+        bbox = draw.textbbox((0, 0), station_num, font=font_medium)
+        text_width = bbox[2] - bbox[0]
+        x = (240 - text_width) // 2
+        draw.text((x, 200), station_num, font=font_medium, fill=(120, 120, 120))
+        display_image_region(image, 0, 195, 239, 239)
+
+        last_displayed_index = current_index
+
+    # 중앙 영역: 재생/정지 변화나 스테이션 변화시
+    if force_full or station_changed or playing_changed:
+        draw_sine_wave_animation(draw, animation_frame)
+        animation_frame = (animation_frame + 1) % 100
+        display_image_region(image, 0, 125, 239, 165)
+        last_displayed_playing = is_playing
+
+def set_volume(volume):
+    """mpv 볼륨 설정 (0-100)"""
+    volume = max(0, min(100, volume))
+    mpv_cmd({"command": ["set_property", "volume", volume]})
+    return volume
+
+# ===============================
+# mpv IPC 유틸
+# ===============================
+def _can_connect_mpv(sock_path=MPV_SOCK, timeout=0.2):
+    if not os.path.exists(sock_path):
+        return False
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(sock_path)
+        s.close()
+        return True
+    except Exception:
+        return False
+
+def _wait_for_mpv_sock(timeout_sec=8.0):
+    start = time.time()
+    while time.time() - start < timeout_sec:
+        if _can_connect_mpv(MPV_SOCK, timeout=0.2):
+            return True
+        time.sleep(0.05)
+    return False
+
+def mpv_cmd(payload):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(0.5)
+        s.connect(MPV_SOCK)
+        s.send((json.dumps(payload) + "\n").encode("utf-8"))
+        s.close()
+        return True
+    except Exception:
+        return False
+
+def ensure_mpv_running():
+    global player_process
+
+    if _can_connect_mpv(MPV_SOCK):
+        return True
+
+    try:
+        if os.path.exists(MPV_SOCK):
+            os.remove(MPV_SOCK)
+    except Exception:
+        pass
+
+    cmd = [
+        "mpv",
+        "--no-video",
+        "--idle=yes",
+        "--no-terminal",
+        "--no-config",
+        "--load-scripts=no",
+        "--osc=no",
+        "--input-default-bindings=no",
+        "--input-ipc-server=" + MPV_SOCK,
+        "--volume=50",
+        "--cache=yes",
+        "--cache-secs=0.3",
+        "--demuxer-readahead-secs=0.3",
+        "--network-timeout=3",
+    ]
+
+    try:
+        player_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+    except Exception as e:
+        print(f"❌ mpv 실행 실패: {e}")
+        player_process = None
+        return False
+
+    ok = _wait_for_mpv_sock(timeout_sec=8.0)
+    if not ok:
+        print("❌ mpv IPC 소켓 생성 실패")
+        return False
+
+    return True
+
+def stop_playback():
+    global is_playing
+    if mpv_cmd({"command": ["stop"]}):
+        is_playing = False
+        print("⏹️  재생 중지")
+    else:
+        print("⚠️  stop 실패")
+
+def play_station(index):
+    global is_playing
+    station = radio_stations[index]
+    print(f"\n🎵 재생: {station['name']}")
+
+    ok = mpv_cmd({"command": ["loadfile", station["url"], "replace"]})
+    if ok:
+        is_playing = True
+    else:
+        print("❌ 재생 실패")
+        is_playing = False
+
+    display_radio_info(index)
+
+# ===============================
+# 메인
+# ===============================
+def main():
+    global is_playing, OPENWEATHER_API_KEY, ENABLE_WEATHER, radio_stations, spi
+    global current_mode, mode_enter_time, current_volume, current_brightness, animation_frame
+    global animation_active, animation_start_time, pwm_backlight
+
+    config = setup_config()
+    if config is None:
+        print("❌ 설정 초기화 실패")
+        return
+
+    OPENWEATHER_API_KEY = config.get('openweather_api_key', '')
+    ENABLE_WEATHER = bool(OPENWEATHER_API_KEY)
+    radio_stations = config['stations']
+    current_index = config.get('last_station', 0)
+
+    if not (0 <= current_index < len(radio_stations)):
+        current_index = 0
+
+    if ENABLE_WEATHER:
+        print("🌤️  날씨 기능 활성화")
+    else:
+        print("⚠️  날씨 기능 비활성화 (API 키 없음)")
+
+    print(f"📻 스테이션 {len(radio_stations)}개 로드")
+
+    acquire_lock()
+
+    # SPI 초기화
+    spi = spidev.SpiDev()
+    spi.open(0, 0)
+    spi.max_speed_hz = 64000000  # 8MHz → 64MHz
+    spi.mode = 0
+
+    # GPIO 초기화
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
+
+    GPIO.setup(S1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(S2, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(KEY, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+    GPIO.setup(CS_PIN, GPIO.OUT)
+    GPIO.setup(DC_PIN, GPIO.OUT)
+    GPIO.setup(RST_PIN, GPIO.OUT)
+    GPIO.setup(BL_PIN, GPIO.OUT)
+
+    # LCD 초기화
+    print("LCD 초기화 중...")
+    init_display(rotation=90)
+
+    # PWM 초기화 (밝기 조절용)
+    try:
+        pwm_safe_close()
+        pwm_backlight = GPIO.PWM(BL_PIN, 1000)
+        pwm_backlight.start(100)
+        current_brightness = 100
+        print("백라이트 초기화 완료")
+    except Exception as e:
+        print(f"백라이트 초기화 실패: {e}")
+        pwm_backlight = None
+
+    # 화면 클리어
+    clear_image = Image.new('RGB', (240, 240), (0, 0, 0))
+    display_image(clear_image)
+    print("화면 클리어 완료")
+
+    # mpv 초기화
+    if not ensure_mpv_running():
+        print("mpv를 시작할 수 없어 종료합니다.")
+        try:
+            pwm_safe_close()
+        except Exception:
+            pass
+        try:
+            GPIO.cleanup()
+        except Exception:
+            pass
+        release_lock()
+        return
+
+    # 초기 화면 표시
+    display_radio_info(current_index, force_full=True)
+
+    # 자동 재생 시작
+    play_station(current_index)
+
+    s1LastState = GPIO.input(S1)
+    keyLastState = GPIO.input(KEY)
+    button_press_start = 0.0
+
+    last_rotation_time = 0.0
+    needs_save = False
+    last_change_time = 0.0
+    pending_play = False
+    last_station_change_time = 0.0
+    last_input_time = 0.0
+    last_updated_index = -1
+    last_animation_update = 0.0
+
+    print("=" * 50)
+    print("📻 WR-Radio (Ultimate v2)")
+    print("=" * 50)
+    print("로터리: 방송국 선택")
+    print("버튼 짧게: 볼륨 조절 모드")
+    print("버튼 길게: 밝기 조절 모드")
+    print("모드에서 버튼: 일반 모드 복귀")
+    print("Ctrl+C: 종료")
+    print("=" * 50)
+
+    try:
+        while True:
+            now = time.time()
+
+            # 모드 자동 복귀
+            if current_mode != 'normal' and (now - mode_enter_time) >= MODE_TIMEOUT_SEC:
+                current_mode = 'normal'
+                print("→ 일반 모드 (자동)")
+                display_radio_info(current_index, force_full=True)
+
+            # 애니메이션 자동 종료
+            if animation_active and (now - animation_start_time) >= ANIMATION_DURATION:
+                animation_active = False
+                image = Image.new('RGB', (240, 240), (0, 0, 0))
+                display_image_region(image, 0, 125, 239, 165)
+
+            # 로터리 처리 (S1 falling edge 기반)
+            s1State = GPIO.input(S1)
+            s2State = GPIO.input(S2)
+
+            if s1State == 0 and s1LastState == 1:
+                if now - last_rotation_time > ROTATION_DEBOUNCE_SEC:
+                    direction = -1 if s2State == 1 else 1
+
+                    if current_mode == 'normal':
+                        current_index = (current_index + direction) % len(radio_stations)
+                        print(f"→ {radio_stations[current_index]['name']}")
+                        last_input_time = now
+                        needs_save = True
+                        last_change_time = now
+                        pending_play = True
+                        last_station_change_time = now
+
+                    elif current_mode == 'volume':
+                        current_volume = set_volume(current_volume + direction * 5)
+                        print(f"🔊 볼륨: {current_volume}%")
+                        mode_enter_time = now
+                        display_mode_indicator('volume', current_volume)
+
+                    elif current_mode == 'brightness':
+                        new_brightness = current_brightness + direction * 10
+                        current_brightness = set_brightness(new_brightness)
+                        print(f"💡 밝기: {current_brightness}%")
+                        mode_enter_time = now
+                        display_mode_indicator('brightness', current_brightness)
+
+                    last_rotation_time = now
+
+            s1LastState = s1State
+
+            # 버튼 처리 (짧게/길게)
+            keyState = GPIO.input(KEY)
+
+            if keyState == 0 and keyLastState == 1:
+                button_press_start = now
+
+            elif keyState == 1 and keyLastState == 0:
+                press_duration = now - button_press_start
+
+                if current_mode != 'normal':
+                    current_mode = 'normal'
+                    print("→ 일반 모드")
+                    display_radio_info(current_index, force_full=True)
+
+                elif press_duration >= 1.0:
+                    current_mode = 'brightness'
+                    mode_enter_time = now
+                    print("💡 밝기 조절 모드")
+                    display_mode_indicator('brightness', current_brightness)
+
+                elif press_duration >= 0.05:
+                    current_mode = 'volume'
+                    mode_enter_time = now
+                    print("🔊 볼륨 조절 모드")
+                    display_mode_indicator('volume', current_volume)
+
+                button_press_start = 0.0
+
+            keyLastState = keyState
+
+            # 입력 멈춘 후 화면 업데이트 (일반 모드)
+            if current_mode == 'normal':
+                if last_input_time > 0 and current_index != last_updated_index:
+                    if (now - last_input_time) >= DISPLAY_UPDATE_DELAY:
+                        display_radio_info(current_index)
+                        last_updated_index = current_index
+
+            # 로터리 멈춘 후 재생 전환 + 애니메이션 시작
+            if pending_play and (now - last_station_change_time) >= PLAY_SWITCH_DELAY_SEC:
+                play_station(current_index)
+                pending_play = False
+                animation_active = True
+                animation_start_time = now
+                print("🎵 애니메이션 시작")
+
+            # 애니메이션 업데이트 (100ms마다)
+            if animation_active and (now - last_animation_update) >= 0.1:
+                image = Image.new('RGB', (240, 240), (0, 0, 0))
+                draw = ImageDraw.Draw(image)
+                draw_sine_wave_animation(draw, animation_frame)
+                animation_frame = (animation_frame + 1) % 100
+                display_image_region(image, 0, 125, 239, 165)
+                last_animation_update = now
+
+            # 저장
+            if needs_save and (now - last_change_time) >= SAVE_DELAY_SEC:
+                save_last_station(current_index)
+                needs_save = False
+
+            time.sleep(0.001)
+
+    except KeyboardInterrupt:
+        print("\n\n프로그램 종료")
+        if needs_save:
+            save_last_station(current_index)
+        try:
+            stop_playback()
+        except Exception:
+            pass
+
+    finally:
+        print("\n정리 중...")
+
+        # mpv 종료
+        try:
+            if player_process:
+                player_process.terminate()
+                player_process.wait(timeout=2)
+        except Exception:
+            pass
+
+        try:
+            if os.path.exists(MPV_SOCK):
+                os.remove(MPV_SOCK)
+        except Exception:
+            pass
+
+        # ✅ PWM 먼저 완전 정리 (중요)
+        try:
+            pwm_safe_close()
+        except Exception:
+            pass
+
+        # GPIO 정리
+        try:
+            GPIO.cleanup()
+        except Exception:
+            pass
+
+        # SPI 정리
+        try:
+            if spi:
+                spi.close()
+        except Exception:
+            pass
+
+        release_lock()
+        print("종료 완료")
+
+if __name__ == "__main__":
+    main()
