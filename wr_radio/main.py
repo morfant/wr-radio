@@ -11,7 +11,7 @@ import spidev
 from PIL import Image
 
 from .state import AppState
-from .config import setup_config_interactive, save_last_station
+from .config import setup_config_interactive, save_settings
 from . import player
 from . import weather
 from . import display
@@ -106,6 +106,11 @@ def main():
     if not (0 <= state.current_index < len(state.radio_stations)):
         state.current_index = 0
 
+    # 저장된 볼륨/밝기 로드
+    state.current_volume = cfg.get("last_volume", 50)
+    state.current_brightness = cfg.get("last_brightness", 100)
+    print(f"🔊 볼륨: {state.current_volume}%  💡 밝기: {state.current_brightness}%")
+
     print("🌤️  날씨 기능 " + ("활성화" if state.enable_weather else "비활성화 (API 키 없음)"))
     print(f"📻 스테이션 {len(state.radio_stations)}개 로드")
 
@@ -144,13 +149,12 @@ def main():
     print("LCD 초기화 중...")
     display.init_display(GPIO, {"CS": PIN_CS, "DC": PIN_DC, "RST": PIN_RST}, state, rotation=90)
 
-    # PWM init
+    # PWM init (저장된 밝기값 적용)
     pwm_safe_close(state)
     try:
         state.pwm_backlight = GPIO.PWM(PIN_BL, 1000)
-        state.pwm_backlight.start(100)
-        state.current_brightness = 100
-        print("백라이트 초기화 완료")
+        state.pwm_backlight.start(state.current_brightness)
+        print(f"백라이트 초기화 완료 ({state.current_brightness}%)")
     except Exception as e:
         print(f"백라이트 초기화 실패: {e}")
         state.pwm_backlight = None
@@ -174,6 +178,9 @@ def main():
         release_lock()
         return
 
+    # 저장된 볼륨 적용
+    player.set_volume(state, state.current_volume)
+
     # initial render
     wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
@@ -190,7 +197,7 @@ def main():
         mode_timeout_sec=3.0,
         save_delay_sec=1.0,
         short_press_min_sec=0.05,
-        long_press_sec=1.0,  # ✅ 여기 바꾸면 “길게” 기준 변경됨
+        long_press_sec=1.0,
     )
     btn_state = ButtonState()
 
@@ -241,10 +248,14 @@ def main():
                     state.last_station_change_time = now
                 elif state.current_mode == "volume":
                     player.set_volume(state, state.current_volume + direction * 5)
+                    state.needs_save = True
+                    state.last_change_time = now
                     state.mode_enter_time = now
                     display.display_mode_indicator(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, "volume", state.current_volume)
                 elif state.current_mode == "brightness":
                     set_brightness(state, state.current_brightness + direction * 10, PIN_BL)
+                    state.needs_save = True
+                    state.last_change_time = now
                     state.mode_enter_time = now
                     display.display_mode_indicator(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, "brightness", state.current_brightness)
 
@@ -272,7 +283,6 @@ def main():
             if state.current_mode == "normal":
                 if state.last_input_time > 0 and state.current_index != state.last_updated_index:
                     if (now - state.last_input_time) >= input_cfg.display_update_delay:
-                        # weather update only on station change
                         if weather.should_update_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"]):
                             weather.start_weather_update(state, state.current_index)
                         wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
@@ -296,9 +306,9 @@ def main():
                 display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
                 last_animation_update = now
 
-            # save last station
+            # save (station, volume, brightness 통합)
             if state.needs_save and (now - state.last_change_time) >= input_cfg.save_delay_sec:
-                save_last_station(state.current_index)
+                save_settings(state.current_index, state.current_volume, state.current_brightness)
                 state.needs_save = False
 
             time.sleep(0.001)
@@ -306,7 +316,7 @@ def main():
     except KeyboardInterrupt:
         print("\n\n프로그램 종료")
         if state.needs_save:
-            save_last_station(state.current_index)
+            save_settings(state.current_index, state.current_volume, state.current_brightness)
         try:
             player.stop_playback(state)
         except Exception:
@@ -315,22 +325,18 @@ def main():
     finally:
         print("\n정리 중...")
 
-        # mpv 종료
         player.shutdown_player(state)
 
-        # PWM 먼저 정리 (중요)
         try:
             pwm_safe_close(state)
         except Exception:
             pass
 
-        # GPIO cleanup
         try:
             GPIO.cleanup()
         except Exception:
             pass
 
-        # SPI close
         try:
             if state.spi:
                 state.spi.close()

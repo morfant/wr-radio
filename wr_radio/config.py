@@ -145,3 +145,15 @@ def save_last_station(index: int) -> None:
             print("💾 저장 완료")
     except Exception as e:
         print(f"저장 실패: {e}")
+
+def save_settings(index: int, volume: int, brightness: int) -> None:
+    try:
+        config = load_config()
+        if config:
+            config["last_station"] = index
+            config["last_volume"] = volume
+            config["last_brightness"] = brightness
+            save_config(config)
+    except Exception as e:
+        print(f"저장 실패: {e}")
+
