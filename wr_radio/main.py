@@ -119,7 +119,7 @@ def main():
     # SPI init
     state.spi = spidev.SpiDev()
     state.spi.open(0, 0)
-    state.spi.max_speed_hz = 64_000_000  # 64MHz
+    state.spi.max_speed_hz = 64_000_000
     state.spi.mode = 0
 
     # GPIO init
@@ -181,6 +181,10 @@ def main():
     # 저장된 볼륨 적용
     player.set_volume(state, state.current_volume)
 
+    # 오디오 모니터링 스레드 시작
+    player.start_audio_monitor(state)
+    print("🎧 오디오 모니터 시작")
+
     # initial render
     wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
@@ -226,12 +230,6 @@ def main():
                 print("→ 일반 모드 (자동)")
                 wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
                 display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
-
-            # animation auto stop
-            if state.animation_active and (now - state.animation_start_time) >= 2.5:
-                state.animation_active = False
-                img = Image.new("RGB", (240, 240), (0, 0, 0))
-                display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
 
             # rotary
             s1_last, direction, last_rotation_time = read_rotary(
@@ -293,18 +291,42 @@ def main():
             if state.pending_play and (now - state.last_station_change_time) >= input_cfg.play_switch_delay_sec:
                 player.play_station(state, state.current_index)
                 state.pending_play = False
-                state.animation_active = True
-                state.animation_start_time = now
-                print("🎵 애니메이션 시작")
-
-            # animation update (100ms)
-            if state.animation_active and (now - last_animation_update) >= 0.1:
+                # 채널 변경 시 애니메이션 영역 즉시 지우기
                 img = Image.new("RGB", (240, 240), (0, 0, 0))
-                draw = ImageDraw.Draw(img)
-                display.draw_sine_wave_animation(draw, state.animation_frame)
-                state.animation_frame = (state.animation_frame + 1) % 100
                 display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
-                last_animation_update = now
+                state.animation_frame = 0
+                state.animation_cleared = True
+
+            # 애니메이션: audio_playing 플래그 기반 (normal 모드에서만)
+            if state.is_playing and state.current_mode == "normal":
+                if state.audio_playing:
+                    # 실제 소리 나는 중 → 사인파 애니메이션
+                    state.animation_cleared = False
+                    if (now - last_animation_update) >= 0.2:
+                        img = Image.new("RGB", (240, 240), (0, 0, 0))
+                        draw = ImageDraw.Draw(img)
+                        display.draw_sine_wave_animation(draw, state.animation_frame)
+                        state.animation_frame = (state.animation_frame + 1) % 100
+                        display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
+                        last_animation_update = now
+                else:
+                    # 재생 명령 보냈지만 아직 소리 안 남 → Loading
+                    state.animation_cleared = False
+                    if (now - last_animation_update) >= 0.2:
+                        img = Image.new("RGB", (240, 240), (0, 0, 0))
+                        draw = ImageDraw.Draw(img)
+                        display.draw_loading_indicator(draw, state.animation_frame)
+                        state.animation_frame = (state.animation_frame + 1) % 100
+                        display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
+                        last_animation_update = now
+
+            elif not state.is_playing and not state.animation_cleared:
+                # 재생 중지 → 영역 지우기
+                img = Image.new("RGB", (240, 240), (0, 0, 0))
+                display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
+                state.animation_frame = 0
+                state.animation_cleared = True
+
 
             # save (station, volume, brightness 통합)
             if state.needs_save and (now - state.last_change_time) >= input_cfg.save_delay_sec:

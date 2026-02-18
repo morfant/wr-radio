@@ -20,14 +20,17 @@ class AppState:
     # weather
     enable_weather: bool = False
     openweather_api_key: str = ""
-    weather_cache: Dict[str, Tuple[float, Dict[str, int]]] = field(default_factory=dict)  # key -> (ts, {'icon': '01', 'temp': 15})
+    weather_cache: Dict[str, Tuple[float, Dict[str, int]]] = field(default_factory=dict)
 
     # display cache
     last_displayed_index: int = -1
     last_displayed_playing: Optional[bool] = None
     animation_frame: int = 0
-    animation_active: bool = False
-    animation_start_time: float = 0.0
+    animation_cleared: bool = False  # 애니메이션 영역 지우기 완료 여부
+
+    # audio monitoring
+    audio_playing: bool = False      # 실제 소리 나는 중 (폴링 스레드가 세팅)
+    shutting_down: bool = False      # 종료 신호 (폴링 스레드 정지용)
 
     # save
     needs_save: bool = False

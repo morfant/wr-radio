@@ -217,6 +217,21 @@ def display_mode_indicator(GPIO, pins, state, mode: str, value: int):
 
     display_image_region(GPIO, pins, state, image, 160, 0, 239, 25)
 
+def draw_loading_indicator(draw: ImageDraw.ImageDraw, frame: int):
+    """간단한 로딩 표시 (점 3개 애니메이션)"""
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+    except Exception:
+        font = ImageFont.load_default()
+
+    # 점 개수를 frame에 따라 변경 (0, 1, 2, 3 순환)
+    dots = "." * ((frame // 5) % 4)
+    text = f"Loading{dots}   "  # 공백으로 이전 점 지우기
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    x = (240 - tw) // 2
+    draw.text((x, 140), text, font=font, fill=(120, 120, 120))
 
 def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
     """
