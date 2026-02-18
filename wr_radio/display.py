@@ -1,6 +1,8 @@
 import math
 import time
+from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
+import pytz
 
 # LCD 핀은 main에서 GPIO setup 후 사용
 # SPI 객체는 state.spi 사용
@@ -176,9 +178,10 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
             draw.line([x, yp, x + 18, yp], fill=(150, 150, 150), width=1)
 
 
-def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int):
+def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int, volume: int = 100):
     center_y = 145
-    amplitude = 12
+    # 볼륨에 따라 진폭 조절 (최소 2, 최대 12)
+    amplitude = max(2, int(volume * 12 / 100))
     wavelength = 40
     num_points = 200
 
@@ -191,6 +194,23 @@ def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int):
 
     for i in range(len(pts) - 1):
         draw.line([pts[i], pts[i + 1]], fill=(80, 150, 200), width=2)
+
+
+def draw_loading_indicator(draw: ImageDraw.ImageDraw, frame: int):
+    """간단한 로딩 표시 (점 3개 애니메이션)"""
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+    except Exception:
+        font = ImageFont.load_default()
+    
+    # 점 개수를 frame에 따라 변경 (0, 1, 2, 3 순환)
+    dots = "." * ((frame // 5) % 4)
+    text = f"Loading{dots}   "  # 공백으로 이전 점 지우기
+    
+    bbox = draw.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    x = (240 - tw) // 2
+    draw.text((x, 140), text, font=font, fill=(120, 120, 120))
 
 
 def display_mode_indicator(GPIO, pins, state, mode: str, value: int):
@@ -217,21 +237,6 @@ def display_mode_indicator(GPIO, pins, state, mode: str, value: int):
 
     display_image_region(GPIO, pins, state, image, 160, 0, 239, 25)
 
-def draw_loading_indicator(draw: ImageDraw.ImageDraw, frame: int):
-    """간단한 로딩 표시 (점 3개 애니메이션)"""
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
-    except Exception:
-        font = ImageFont.load_default()
-
-    # 점 개수를 frame에 따라 변경 (0, 1, 2, 3 순환)
-    dots = "." * ((frame // 5) % 4)
-    text = f"Loading{dots}   "  # 공백으로 이전 점 지우기
-
-    bbox = draw.textbbox((0, 0), text, font=font)
-    tw = bbox[2] - bbox[0]
-    x = (240 - tw) // 2
-    draw.text((x, 140), text, font=font, fill=(120, 120, 120))
 
 def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
     """
@@ -271,29 +276,46 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
                 tw = bbox[2] - bbox[0]
                 x = max(5, (240 - tw) // 2)
                 draw.text((x, 32), station_name, font=font_mini, fill=(220, 220, 220))
-                location_y = 50
+                location_y = 47
             else:
                 x = max(5, (240 - tw) // 2)
                 draw.text((x, 30), station_name, font=font_tiny, fill=(220, 220, 220))
-                location_y = 50
+                location_y = 47
         else:
             x = (240 - tw) // 2
             draw.text((x, 28), station_name, font=font_small, fill=(220, 220, 220))
-            location_y = 50
+            location_y = 47
 
         bbox = draw.textbbox((0, 0), station["location"], font=font_tiny)
         tw = bbox[2] - bbox[0]
         x = (240 - tw) // 2
-        draw.text((x, location_y + 5), station["location"], font=font_tiny, fill=(120, 120, 120))
+        draw.text((x, location_y + 2), station["location"], font=font_tiny, fill=(120, 120, 120))
 
+        # 현지 시간 표시
+        if "timezone" in station:
+            try:
+                tz = pytz.timezone(station["timezone"])
+                local_time = datetime.now(tz)
+                utc_offset = local_time.strftime("%z")  # +0900
+                utc_offset_str = f"UTC{utc_offset[:3]}:{utc_offset[3:]}"  # UTC+09:00
+                time_str = f"{local_time.strftime('%H:%M')} ({utc_offset_str})"
+                
+                bbox = draw.textbbox((0, 0), time_str, font=font_tiny)
+                tw = bbox[2] - bbox[0]
+                x = (240 - tw) // 2
+                draw.text((x, location_y + 20), time_str, font=font_tiny, fill=(100, 200, 255))
+            except Exception as e:
+                print(f"⚠️  타임존 처리 실패: {e}")
+
+        # 날씨 아이콘 (시간 표시 때문에 아래로 이동)
         if weather_data:
             icon_x = 90
-            icon_y = location_y + 25
+            icon_y = location_y + 40
             draw_weather_icon(draw, icon_x, icon_y, str(weather_data.get("icon", "")))
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
-            draw.text((icon_x + 28, location_y + 27), temp_text, font=font_small, fill=(100, 200, 255))
+            draw.text((icon_x + 28, location_y + 41), temp_text, font=font_small, fill=(100, 200, 255))
 
-        display_image_region(GPIO, pins, state, image, 0, 0, 239, 110)
+        display_image_region(GPIO, pins, state, image, 0, 0, 239, 115)
 
         station_num = f"{state.current_index + 1} / {len(state.radio_stations)}"
         bbox = draw.textbbox((0, 0), station_num, font=font_medium)
@@ -305,7 +327,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
         state.last_displayed_index = state.current_index
 
     if force_full or station_changed or playing_changed:
-        draw_sine_wave_animation(draw, state.animation_frame)
+        draw_sine_wave_animation(draw, state.animation_frame, state.current_volume)
         state.animation_frame = (state.animation_frame + 1) % 100
         display_image_region(GPIO, pins, state, image, 0, 125, 239, 165)
         state.last_displayed_playing = state.is_playing

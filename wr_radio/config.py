@@ -1,8 +1,66 @@
 import json
+import math
 import os
 from typing import Any, Dict, List, Optional
 
 CONFIG_FILE = "/home/wr-radio/wr-radio/config.json"
+
+# 주요 타임존 대표 좌표 (위도, 경도, 타임존)
+TIMEZONE_LOOKUP = [
+    # 아시아
+    (37.5, 127.0, "Asia/Seoul"),
+    (35.7, 139.7, "Asia/Tokyo"),
+    (39.9, 116.4, "Asia/Shanghai"),
+    (22.3, 114.2, "Asia/Hong_Kong"),
+    (1.3, 103.8, "Asia/Singapore"),
+    (13.7, 100.5, "Asia/Bangkok"),
+    (28.6, 77.2, "Asia/Kolkata"),
+    (25.0, 121.5, "Asia/Taipei"),
+    (31.2, 121.5, "Asia/Shanghai"),
+    (23.1, 113.3, "Asia/Hong_Kong"),
+    
+    # 유럽
+    (51.5, -0.1, "Europe/London"),
+    (48.9, 2.3, "Europe/Paris"),
+    (52.5, 13.4, "Europe/Berlin"),
+    (41.9, 12.5, "Europe/Rome"),
+    (40.4, -3.7, "Europe/Madrid"),
+    (59.3, 18.1, "Europe/Stockholm"),
+    (55.8, 37.6, "Europe/Moscow"),
+    (50.1, 8.7, "Europe/Berlin"),
+    (45.5, 9.2, "Europe/Rome"),
+    
+    # 북미
+    (40.7, -74.0, "America/New_York"),
+    (41.9, -87.6, "America/Chicago"),
+    (39.7, -105.0, "America/Denver"),
+    (34.0, -118.2, "America/Los_Angeles"),
+    (37.8, -122.4, "America/Los_Angeles"),
+    (49.3, -123.1, "America/Vancouver"),
+    (43.7, -79.4, "America/Toronto"),
+    (42.4, -71.1, "America/New_York"),
+    (33.4, -112.1, "America/Phoenix"),
+    (29.8, -95.4, "America/Chicago"),
+    
+    # 남미
+    (-23.5, -46.6, "America/Sao_Paulo"),
+    (-34.6, -58.4, "America/Argentina/Buenos_Aires"),
+    (19.4, -99.1, "America/Mexico_City"),
+    (-12.0, -77.0, "America/Lima"),
+    (4.7, -74.1, "America/Bogota"),
+    
+    # 오세아니아
+    (-33.9, 151.2, "Australia/Sydney"),
+    (-37.8, 144.9, "Australia/Melbourne"),
+    (-41.3, 174.8, "Pacific/Auckland"),
+    (-27.5, 153.0, "Australia/Brisbane"),
+    
+    # 아프리카
+    (-26.2, 28.0, "Africa/Johannesburg"),
+    (30.0, 31.2, "Africa/Cairo"),
+    (6.5, 3.4, "Africa/Lagos"),
+    (-1.3, 36.8, "Africa/Nairobi"),
+]
 
 DEFAULT_STATIONS: List[Dict[str, Any]] = [
     {
@@ -48,6 +106,21 @@ DEFAULT_STATIONS: List[Dict[str, Any]] = [
 ]
 
 
+def find_timezone(lat: float, lon: float) -> str:
+    """위경도로 가장 가까운 타임존 찾기"""
+    min_dist = float('inf')
+    best_tz = "UTC"
+    
+    for tz_lat, tz_lon, tz_name in TIMEZONE_LOOKUP:
+        # 간단한 유클리드 거리 (정확하진 않지만 충분함)
+        dist = math.sqrt((lat - tz_lat)**2 + (lon - tz_lon)**2)
+        if dist < min_dist:
+            min_dist = dist
+            best_tz = tz_name
+    
+    return best_tz
+
+
 def load_config() -> Optional[Dict[str, Any]]:
     if os.path.exists(CONFIG_FILE):
         try:
@@ -73,6 +146,8 @@ def create_default_config() -> Optional[Dict[str, Any]]:
     config: Dict[str, Any] = {
         "openweather_api_key": "",
         "last_station": 0,
+        "last_volume": 50,
+        "last_brightness": 100,
         "stations": DEFAULT_STATIONS,
     }
     if save_config(config):
@@ -132,19 +207,14 @@ def setup_config_interactive() -> Optional[Dict[str, Any]]:
             st["color"] = tuple(st["color"])
         elif "color" not in st:
             st["color"] = (100, 200, 255)
+        
+        # timezone 자동 찾기
+        if "timezone" not in st or not st["timezone"]:
+            st["timezone"] = find_timezone(st["lat"], st["lon"])
+            print(f"🌍 {st['name']}: {st['timezone']}")
 
     return config
 
-
-def save_last_station(index: int) -> None:
-    try:
-        config = load_config()
-        if config:
-            config["last_station"] = index
-            save_config(config)
-            print("💾 저장 완료")
-    except Exception as e:
-        print(f"저장 실패: {e}")
 
 def save_settings(index: int, volume: int, brightness: int) -> None:
     try:
@@ -154,6 +224,6 @@ def save_settings(index: int, volume: int, brightness: int) -> None:
             config["last_volume"] = volume
             config["last_brightness"] = brightness
             save_config(config)
+            print(f"💾 저장 완료 (스테이션:{index+1}, 볼륨:{volume}%, 밝기:{brightness}%)")
     except Exception as e:
         print(f"저장 실패: {e}")
-

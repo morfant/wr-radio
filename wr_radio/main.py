@@ -300,12 +300,12 @@ def main():
             # 애니메이션: audio_playing 플래그 기반 (normal 모드에서만)
             if state.is_playing and state.current_mode == "normal":
                 if state.audio_playing:
-                    # 실제 소리 나는 중 → 사인파 애니메이션
+                    # 실제 소리 나는 중 → 사인파 애니메이션 (볼륨 기반 진폭)
                     state.animation_cleared = False
                     if (now - last_animation_update) >= 0.2:
                         img = Image.new("RGB", (240, 240), (0, 0, 0))
                         draw = ImageDraw.Draw(img)
-                        display.draw_sine_wave_animation(draw, state.animation_frame)
+                        display.draw_sine_wave_animation(draw, state.animation_frame, state.current_volume)
                         state.animation_frame = (state.animation_frame + 1) % 100
                         display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
                         last_animation_update = now
@@ -326,7 +326,6 @@ def main():
                 display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
                 state.animation_frame = 0
                 state.animation_cleared = True
-
 
             # save (station, volume, brightness 통합)
             if state.needs_save and (now - state.last_change_time) >= input_cfg.save_delay_sec:
