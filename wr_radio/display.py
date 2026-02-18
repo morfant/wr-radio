@@ -232,10 +232,10 @@ def display_mode_indicator(GPIO, pins, state, mode: str, value: int):
 
     bbox = draw.textbbox((0, 0), text, font=font_small)
     text_width = bbox[2] - bbox[0]
-    x = 240 - text_width - 10
+    x = max(5, 240 - text_width - 8)  # 최소 5px 여백 보장, 오른쪽 8px
     draw.text((x, 8), text, font=font_small, fill=color)
 
-    display_image_region(GPIO, pins, state, image, 160, 0, 239, 25)
+    display_image_region(GPIO, pins, state, image, 0, 0, 239, 25)
 
 
 def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
@@ -303,7 +303,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
                 bbox = draw.textbbox((0, 0), time_str, font=font_tiny)
                 tw = bbox[2] - bbox[0]
                 x = (240 - tw) // 2
-                draw.text((x, location_y + 20), time_str, font=font_tiny, fill=(100, 200, 255))
+                draw.text((x, location_y + 21), time_str, font=font_tiny, fill=(100, 200, 255))
             except Exception as e:
                 print(f"⚠️  타임존 처리 실패: {e}")
 
@@ -313,7 +313,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
             icon_y = location_y + 40
             draw_weather_icon(draw, icon_x, icon_y, str(weather_data.get("icon", "")))
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
-            draw.text((icon_x + 28, location_y + 41), temp_text, font=font_small, fill=(100, 200, 255))
+            draw.text((icon_x + 28, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
 
         display_image_region(GPIO, pins, state, image, 0, 0, 239, 115)
 
