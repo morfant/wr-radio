@@ -101,7 +101,6 @@ def ensure_mpv_running(state) -> bool:
         "--input-default-bindings=no",
         "--input-ipc-server=" + state.mpv_sock,
         "--volume=50",
-        "--ao=null",  # ← 이 줄 추가: 오디오 출력 없이 재생만 함
         "--cache=yes",
         "--cache-secs=0.3",
         "--demuxer-readahead-secs=0.3",
