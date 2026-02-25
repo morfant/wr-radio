@@ -202,6 +202,9 @@ def main():
     player.play_station(state, state.current_index)
     state.is_playing = True
 
+    # 초기 날씨 요청
+    weather.start_weather_update(state, state.current_index)
+
     # input loop vars
     input_cfg = InputConfig(
         rotation_debounce_sec=0.02,
