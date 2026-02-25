@@ -178,6 +178,41 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
             draw.line([x, yp, x + 18, yp], fill=(150, 150, 150), width=1)
 
 
+def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
+    """배터리 아이콘 그리기 (약 28x13 픽셀)"""
+    # 배터리 외곽선
+    if percent <= 15:
+        outline_color = (255, 50, 50)
+    elif percent >= 80:
+        outline_color = (100, 200, 100)
+    else:
+        outline_color = (100, 100, 100)
+    draw.rectangle([x, y + 2, x + 24, y + 12], outline=outline_color)
+    # 배터리 양극 돌출부
+    draw.rectangle([x + 24, y + 5, x + 26, y + 9], fill=outline_color)
+
+    # 충전량에 따른 내부 채우기 (최대 폭 22px)
+    fill_width = max(0, int(22 * percent / 100))
+    if fill_width > 0:
+        if percent <= 15:
+            fill_color = (255, 50, 50)
+        elif percent <= 30:
+            fill_color = (255, 180, 50)
+        elif percent >= 80:
+            fill_color = (100, 200, 100)
+        else:
+            fill_color = (200, 200, 200)
+        draw.rectangle([x + 1, y + 3, x + fill_width, y + 11], fill=fill_color)
+
+
+def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool = True):
+    """배터리 상태를 화면 좌상단에 그리기 (아이콘만)"""
+    # 저전력 점멸: blink_on=False면 아이콘 안 그림
+    if percent <= 15 and not blink_on:
+        return
+    draw_battery_icon(draw, 4, 4, percent)
+
+
 def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int, volume: int = 100):
     center_y = 145
     # 볼륨에 따라 진폭 조절 (최소 2, 최대 12)
@@ -236,6 +271,25 @@ def display_mode_indicator(GPIO, pins, state, mode: str, value: int):
     draw.text((x, 8), text, font=font_small, fill=color)
 
     display_image_region(GPIO, pins, state, image, 0, 0, 239, 25)
+
+
+def display_battery_only(GPIO, pins, state):
+    """배터리 영역만 부분 업데이트 (상단 좌측)"""
+    if state.battery_monitor is None:
+        return
+    voltage, percent = state.battery_monitor.get_status()
+    blink_on = state.battery_monitor.is_blink_on()
+
+    # 저전력이 아니면 값 변화 없을 때 스킵
+    if not state.battery_monitor.is_low and percent == state.last_battery_percent:
+        return
+
+    image = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw_battery_status(draw, percent, blink_on)
+    display_image_region(GPIO, pins, state, image, 0, 0, 35, 18)
+
+    state.last_battery_percent = percent
 
 
 def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
@@ -314,6 +368,12 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
             draw_weather_icon(draw, icon_x, icon_y, str(weather_data.get("icon", "")))
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
             draw.text((icon_x + 28, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
+
+        # 배터리 상태 (좌상단)
+        if state.battery_monitor is not None:
+            voltage, percent = state.battery_monitor.get_status()
+            draw_battery_status(draw, percent, state.battery_monitor.is_blink_on())
+            state.last_battery_percent = percent
 
         display_image_region(GPIO, pins, state, image, 0, 0, 239, 115)
 

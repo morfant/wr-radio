@@ -16,6 +16,7 @@ from . import player
 from . import weather
 from . import display
 from .input import InputConfig, ButtonState, read_rotary, handle_button
+from .battery import BatteryMonitor
 
 LOCK_FILE = "/tmp/wr_radio.lock"
 
@@ -185,6 +186,14 @@ def main():
     player.start_audio_monitor(state)
     print("🎧 오디오 모니터 시작")
 
+    # 배터리 모니터 시작
+    bat_mon = BatteryMonitor()
+    if bat_mon.start():
+        state.battery_monitor = bat_mon
+    else:
+        print("⚠️  배터리 모니터 없이 진행")
+        state.battery_monitor = None
+
     # initial render
     wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
@@ -209,6 +218,8 @@ def main():
     key_last = GPIO.input(PIN_KEY)
     last_rotation_time = 0.0
     last_animation_update = 0.0
+    last_battery_update = 0.0
+    last_weather_check = 0.0
 
     print("=" * 50)
     print("📻 WR-Radio (Modular)")
@@ -244,6 +255,7 @@ def main():
                     state.last_change_time = now
                     state.pending_play = True
                     state.last_station_change_time = now
+                    state.last_displayed_weather = None
                 elif state.current_mode == "volume":
                     player.set_volume(state, state.current_volume + direction * 5)
                     state.needs_save = True
@@ -291,6 +303,9 @@ def main():
             if state.pending_play and (now - state.last_station_change_time) >= input_cfg.play_switch_delay_sec:
                 player.play_station(state, state.current_index)
                 state.pending_play = False
+                # 부하 변동 → 배터리 샘플링 일시 정지
+                if state.battery_monitor:
+                    state.battery_monitor.pause_sampling()
                 # 채널 변경 시 애니메이션 영역 즉시 지우기
                 img = Image.new("RGB", (240, 240), (0, 0, 0))
                 display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
@@ -327,6 +342,23 @@ def main():
                 state.animation_frame = 0
                 state.animation_cleared = True
 
+            # 배터리 상태 주기적 업데이트 (normal 모드에서만)
+            # 저전력 시 1초 간격 (점멸), 그 외 30초 간격
+            if state.current_mode == "normal" and state.battery_monitor is not None:
+                bat_interval = 1.0 if state.battery_monitor.is_low else 30.0
+                if (now - last_battery_update) >= bat_interval:
+                    display.display_battery_only(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
+                    last_battery_update = now
+
+            # 날씨 데이터 도착 시 화면 갱신 (2초마다 체크)
+            if state.current_mode == "normal" and (now - last_weather_check) >= 2.0:
+                last_weather_check = now
+                st = state.radio_stations[state.current_index]
+                wd = weather.get_cached_weather(state, st["lat"], st["lon"])
+                if wd and state.last_displayed_weather != wd:
+                    display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
+                    state.last_displayed_weather = wd
+
             # save (station, volume, brightness 통합)
             if state.needs_save and (now - state.last_change_time) >= input_cfg.save_delay_sec:
                 save_settings(state.current_index, state.current_volume, state.current_brightness)
@@ -347,6 +379,9 @@ def main():
         print("\n정리 중...")
 
         player.shutdown_player(state)
+
+        if state.battery_monitor:
+            state.battery_monitor.stop()
 
         try:
             pwm_safe_close(state)

@@ -68,7 +68,7 @@ def _audio_monitor_thread(state) -> None:
         if state.is_playing:
             idle = _get_core_idle(state)
             state.audio_playing = not idle
-            print(f"[Monitor] core-idle={idle}, audio_playing={state.audio_playing}") 
+            # print(f"[Monitor] core-idle={idle}, audio_playing={state.audio_playing}") 
         else:
             state.audio_playing = False
         time.sleep(0.5)

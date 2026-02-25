@@ -32,6 +32,13 @@ class AppState:
     audio_playing: bool = False      # 실제 소리 나는 중 (폴링 스레드가 세팅)
     shutting_down: bool = False      # 종료 신호 (폴링 스레드 정지용)
 
+    # battery
+    battery_monitor: Any = None      # BatteryMonitor 인스턴스
+    last_battery_percent: int = -1   # 마지막 표시한 배터리 %
+
+    # weather display
+    last_displayed_weather: Any = None
+
     # save
     needs_save: bool = False
     last_change_time: float = 0.0
