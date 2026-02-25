@@ -105,6 +105,7 @@ def ensure_mpv_running(state) -> bool:
         "--cache-secs=0.3",
         "--demuxer-readahead-secs=0.3",
         "--network-timeout=3",
+        "--af=lavfi=[lowshelf=frequency=80:gain=-12]",
     ]
 
     try:
