@@ -5,6 +5,18 @@ import subprocess
 import threading
 import time
 
+import RPi.GPIO as GPIO
+
+HEADPHONE_PIN = 23
+SPEAKER_MAX_VOLUME = 40
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(HEADPHONE_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+
+def is_headphone_inserted() -> bool:
+    return bool(GPIO.input(HEADPHONE_PIN))
+
 
 def _can_connect(sock_path: str, timeout: float = 0.2) -> bool:
     if not os.path.exists(sock_path):
@@ -68,7 +80,6 @@ def _audio_monitor_thread(state) -> None:
         if state.is_playing:
             idle = _get_core_idle(state)
             state.audio_playing = not idle
-            # print(f"[Monitor] core-idle={idle}, audio_playing={state.audio_playing}") 
         else:
             state.audio_playing = False
         time.sleep(0.5)
@@ -136,7 +147,6 @@ def stop_playback(state) -> None:
 def play_station(state, index: int) -> None:
     st = state.radio_stations[index]
     print(f"\n🎵 재생: {st['name']}")
-    # 채널 변경 시 audio_playing 즉시 False로
     state.audio_playing = False
     ok = mpv_cmd(state, {"command": ["loadfile", st["url"], "replace"]})
     state.is_playing = bool(ok)
@@ -146,8 +156,10 @@ def play_station(state, index: int) -> None:
 
 def set_volume(state, volume: int) -> int:
     volume = max(0, min(100, volume))
-    mpv_cmd(state, {"command": ["set_property", "volume", volume]})
-    state.current_volume = volume
+    state.current_volume = volume  # UI용 논리 볼륨은 항상 0~100
+    # 실제 mpv 볼륨만 제한
+    actual = min(volume, SPEAKER_MAX_VOLUME) if not is_headphone_inserted() else volume
+    mpv_cmd(state, {"command": ["set_property", "volume", actual]})
     return volume
 
 
@@ -165,5 +177,10 @@ def shutdown_player(state) -> None:
     try:
         if os.path.exists(state.mpv_sock):
             os.remove(state.mpv_sock)
+    except Exception:
+        pass
+
+    try:
+        GPIO.cleanup(HEADPHONE_PIN)
     except Exception:
         pass
