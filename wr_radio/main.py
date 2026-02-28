@@ -120,7 +120,7 @@ def main():
     # SPI init
     state.spi = spidev.SpiDev()
     state.spi.open(0, 0)
-    state.spi.max_speed_hz = 64_000_000
+    state.spi.max_speed_hz = 16_000_000
     state.spi.mode = 0
 
     # GPIO init
@@ -320,7 +320,7 @@ def main():
                 if state.audio_playing:
                     # 실제 소리 나는 중 → 사인파 애니메이션 (볼륨 기반 진폭)
                     state.animation_cleared = False
-                    if (now - last_animation_update) >= 0.2:
+                    if (now - last_animation_update) >= 1.0:
                         img = Image.new("RGB", (240, 240), (0, 0, 0))
                         draw = ImageDraw.Draw(img)
                         display.draw_sine_wave_animation(draw, state.animation_frame, state.current_volume)
