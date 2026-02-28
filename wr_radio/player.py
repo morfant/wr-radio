@@ -79,17 +79,19 @@ def _get_core_idle(state) -> bool:
     except Exception:
         return True
 
-
 def _audio_monitor_thread(state) -> None:
-    """폴링 스레드: 0.5초마다 core-idle 확인 후 state.audio_playing 세팅."""
     last_hp = is_headphone_inserted()
-    set_amp_power(not last_hp)  # 초기 상태 반영
+    set_amp_power(not last_hp)
 
     while not state.shutting_down:
         hp = is_headphone_inserted()
         if hp != last_hp:
-            set_amp_power(not hp)  # 이어폰 삽입시 앰프 끄기, 제거시 켜기
-            last_hp = hp
+            time.sleep(0.5)  # 50ms 대기 후 재확인
+            hp = is_headphone_inserted()
+            if hp != last_hp:  # 여전히 바뀐 상태면 확정
+                set_amp_power(not hp)
+                last_hp = hp
+                print(f"🎧 헤드폰 {'삽입' if hp else '제거'} → 앰프 {'OFF' if hp else 'ON'}")
 
         if state.is_playing:
             idle = _get_core_idle(state)
@@ -97,7 +99,6 @@ def _audio_monitor_thread(state) -> None:
         else:
             state.audio_playing = False
         time.sleep(0.5)
-
 
 def start_audio_monitor(state) -> threading.Thread:
     t = threading.Thread(target=_audio_monitor_thread, args=(state,), daemon=True)
