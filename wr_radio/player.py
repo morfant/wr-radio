@@ -8,14 +8,20 @@ import time
 import RPi.GPIO as GPIO
 
 HEADPHONE_PIN = 23
+AMP_STBY_PIN = 24
 SPEAKER_MAX_VOLUME = 100
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(HEADPHONE_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(AMP_STBY_PIN, GPIO.OUT, initial=GPIO.HIGH)
 
 
 def is_headphone_inserted() -> bool:
     return bool(GPIO.input(HEADPHONE_PIN))
+
+
+def set_amp_power(enable: bool) -> None:
+    GPIO.output(AMP_STBY_PIN, GPIO.HIGH if enable else GPIO.LOW)
 
 
 def _can_connect(sock_path: str, timeout: float = 0.2) -> bool:
@@ -76,7 +82,15 @@ def _get_core_idle(state) -> bool:
 
 def _audio_monitor_thread(state) -> None:
     """폴링 스레드: 0.5초마다 core-idle 확인 후 state.audio_playing 세팅."""
+    last_hp = is_headphone_inserted()
+    set_amp_power(not last_hp)  # 초기 상태 반영
+
     while not state.shutting_down:
+        hp = is_headphone_inserted()
+        if hp != last_hp:
+            set_amp_power(not hp)  # 이어폰 삽입시 앰프 끄기, 제거시 켜기
+            last_hp = hp
+
         if state.is_playing:
             idle = _get_core_idle(state)
             state.audio_playing = not idle
@@ -154,7 +168,7 @@ def play_station(state, index: int) -> None:
 
 
 def set_volume(state, volume: int) -> int:
-    volume = max(0, min(100, volume))  # 100
+    volume = max(0, min(100, volume))
     state.current_volume = volume
     actual = min(volume, SPEAKER_MAX_VOLUME) if not is_headphone_inserted() else volume
     mpv_cmd(state, {"command": ["set_property", "volume", actual]})
@@ -180,5 +194,6 @@ def shutdown_player(state) -> None:
 
     try:
         GPIO.cleanup(HEADPHONE_PIN)
+        GPIO.cleanup(AMP_STBY_PIN)
     except Exception:
         pass
