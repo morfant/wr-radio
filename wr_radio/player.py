@@ -8,7 +8,7 @@ import time
 import RPi.GPIO as GPIO
 
 HEADPHONE_PIN = 23
-SPEAKER_MAX_VOLUME = 40
+SPEAKER_MAX_VOLUME = 100
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(HEADPHONE_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -116,7 +116,6 @@ def ensure_mpv_running(state) -> bool:
         "--cache-secs=0.3",
         "--demuxer-readahead-secs=0.3",
         "--network-timeout=3",
-        "--af=lavfi=[lowshelf=frequency=80:gain=-12]",
     ]
 
     try:
@@ -155,9 +154,8 @@ def play_station(state, index: int) -> None:
 
 
 def set_volume(state, volume: int) -> int:
-    volume = max(0, min(100, volume))
-    state.current_volume = volume  # UI용 논리 볼륨은 항상 0~100
-    # 실제 mpv 볼륨만 제한
+    volume = max(0, min(100, volume))  # 100
+    state.current_volume = volume
     actual = min(volume, SPEAKER_MAX_VOLUME) if not is_headphone_inserted() else volume
     mpv_cmd(state, {"command": ["set_property", "volume", actual]})
     return volume

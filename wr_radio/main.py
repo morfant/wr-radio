@@ -28,7 +28,7 @@ PIN_KEY = 22
 PIN_CS = 26
 PIN_DC = 13
 PIN_RST = 6
-PIN_BL = 5
+PIN_BL = 12
 
 
 def acquire_lock():
