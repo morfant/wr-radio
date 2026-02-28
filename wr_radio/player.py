@@ -9,7 +9,7 @@ import RPi.GPIO as GPIO
 
 HEADPHONE_PIN = 23
 AMP_STBY_PIN = 24
-SPEAKER_MAX_VOLUME = 100
+SPEAKER_MAX_VOLUME = 150
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(HEADPHONE_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -169,7 +169,7 @@ def play_station(state, index: int) -> None:
 
 
 def set_volume(state, volume: int) -> int:
-    volume = max(0, min(100, volume))
+    volume = max(0, min(150, volume))
     state.current_volume = volume
     actual = min(volume, SPEAKER_MAX_VOLUME) if not is_headphone_inserted() else volume
     mpv_cmd(state, {"command": ["set_property", "volume", actual]})
