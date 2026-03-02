@@ -5,9 +5,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 # GPIO 핀 설정
 CS_PIN = 26
-DC_PIN = 19
-RST_PIN = 13
-BL_PIN = 6
+DC_PIN = 13
+RST_PIN = 6
+BL_PIN = 12
 
 # SPI 설정
 spi = spidev.SpiDev()
