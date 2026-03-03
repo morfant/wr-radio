@@ -31,7 +31,51 @@ Raspberry Pi Zero 2W 기반 인터넷 라디오. 전통적인 라디오 조작�
 | 헤드폰 잭 | PJ-307C (스위치드) | 헤드폰/스피커 자동 전환 |
 | 배터리 | 10000mAh LiPo | 전원 |
 | 전원관리 | LiPo Rider Plus | 충전/방전 관리 |
+| ADC | ADS1115 | 배터리 전압 측정 |
 | 케이스 | 커스텀 3D 프린팅 (Fusion 360) | 하우징 |
+
+---
+
+## GPIO 핀 맵 (BCM 번호 기준)
+
+### 전체 요약
+
+| 모듈 | 신호 | BCM 핀 | 인터페이스 | 비고 |
+|------|------|--------|-----------|------|
+| **로터리 엔코더** | S1 | 17 | GPIO (PUD_UP) | |
+| | S2 | 27 | GPIO (PUD_UP) | |
+| | BTN | 22 | GPIO (PUD_UP) | |
+| **ST7789 LCD** | CS | 26 | SPI0 CE | |
+| | DC | 13 | GPIO OUT | |
+| | RST | 6 | GPIO OUT | |
+| | BL | 12 | PWM0 (1kHz) | 백라이트 밝기 |
+| **UDA1334A** | BCLK | 18 | I2S (PCM_CLK) | 커널 처리 |
+| | LRCLK | 19 | I2S (PCM_FS) | 커널 처리 |
+| | DIN | 21 | I2S (PCM_DOUT) | 커널 처리 |
+| **PAM8403** | STBY | 24 | GPIO OUT | LOW=대기, HIGH=동작 |
+| **헤드폰 감지** | DETECT | 23 | GPIO IN (PUD_UP) | PJ-307C 스위치 접점 |
+| **ADS1115** | SDA | 2 | I2C1 | 배터리 전압 측정 |
+| | SCL | 3 | I2C1 | 배터리 전압 측정 |
+
+### 배터리 전압 측정 회로
+
+```
+LiPo (+) ──[저항 분배기]── ADS1115 A0
+                             × 2 (소프트웨어 보정)
+```
+
+- ADS1115 A0 단일 채널 사용
+- 측정값 × 2 → 실제 배터리 전압
+- I2C 주소: 기본값 (ADDR → GND, 0x48)
+
+### 헤드폰 감지 동작
+
+```
+헤드폰 미삽입: DETECT = LOW  → PAM8403 STBY HIGH (앰프 ON)
+헤드폰 삽입:   DETECT = HIGH → PAM8403 STBY LOW  (앰프 OFF)
+```
+
+소프트웨어(`player.py`)에서 GPIO 23 폴링으로 감지, 50ms 디바운스 적용.
 
 ---
 
@@ -104,7 +148,7 @@ Pi (I2S) → UDA1334A DAC → [전압 분배기] → PJ-307C 잭
 - 애니메이션 주기를 늘리면 출렁임 속도와 오디오 노이즈 음고도 같이 변함
 
 ### 원인
-ST7789 LCD SPI 전송(64MHz, 0.2초 주기)이 전원/GND 라인을 오염시켜 백라이트와 PAM8403 앰프 모두에 영향.
+ST7789 LCD SPI 전송(64MHz, 0.2초 주기)이 전원/GND 라인을 오염시켜 백라이트(BCM 12 PWM)와 PAM8403 앰프 모두에 영향.
 
 ### 현재 적용한 완화책 (소프트웨어)
 - SPI 속도 64MHz → **16MHz** 낮춤 (`state.spi.max_speed_hz = 16_000_000`)
@@ -116,7 +160,7 @@ ST7789 LCD SPI 전송(64MHz, 0.2초 주기)이 전원/GND 라인을 오염시켜
 
 ### PCB 설계 시 근본 해결 포인트
 - GND 플레인 전체 깔기
-- SPI 라인과 아날로그 신호선 최대한 멀리 라우팅
+- SPI 라인(BCM 26/13/6)과 아날로그 신호선 최대한 멀리 라우팅
 - Star grounding: PAM8403 GND와 디지털 GND를 한 점에서만 합류
 - LCD 디커플링 캐패시터를 VCC 핀 최대한 가까이 배치
 
@@ -131,10 +175,11 @@ ST7789 LCD SPI 전송(64MHz, 0.2초 주기)이 전원/GND 라인을 오염시켜
 ### 모듈 구조
 ```
 main.py
-├── display.py      — ST7789 LCD 제어
-├── audio.py        — mpv 래퍼, 스트리밍 제어
-├── encoder.py      — 로터리 엔코더 IRQ 처리
+├── display.py      — ST7789 LCD 제어 (SPI0, BCM 26/13/6/12)
+├── player.py       — mpv 래퍼, 스트리밍 제어, 헤드폰 감지 (BCM 23/24)
+├── battery.py      — ADS1115 배터리 모니터 (I2C1, BCM 2/3)
 ├── weather.py      — OpenWeatherMap API
+├── input.py        — 로터리 엔코더 처리 (BCM 17/27/22)
 └── config.py       — 설정 관리 (JSON)
 ```
 
@@ -170,6 +215,7 @@ main.py
 
 - [ ] 케이스 최종 설계 완성 + 출력
 - [ ] 스피커 선정 확정
+- [ ] PCB 설계 (HAT 형식, 수평 레이아웃)
 - [ ] SD카드 이미지 배포판 제작 (의존성 포함)
 - [ ] 사용자용 설정 가이드 문서화
 - [ ] Bluetooth 헤드폰 지원 (선택적 확장)
@@ -184,4 +230,4 @@ main.py
 
 ---
 
-*최종 업데이트: 2026-02-28 (LCD SPI 노이즈 분석 추가)*
+*최종 업데이트: 2026-03-03 (GPIO 핀 맵 섹션 추가, 모듈 구조 핀 정보 반영)*
