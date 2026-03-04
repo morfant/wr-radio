@@ -179,13 +179,16 @@ def do_shutdown(state: AppState, gpio_pins: dict):
     try:
         img = Image.new("RGB", (240, 240), (0, 0, 0))
         draw = ImageDraw.Draw(img)
-        font = load_font(18, bold=True)
-        draw.text((120, 115), "Shutting down...", fill=(200, 60, 60), font=font, anchor="mm")
+        font = load_font(16, bold=False)
+        font_sub = load_font(13, bold=False)
+        draw.text((120, 100), "Shutting down...", fill=(200, 60, 60), font=font, anchor="mm")
+        draw.text((120, 140), "Wait 15 sec before", fill=(140, 140, 160), font=font_sub, anchor="mm")
+        draw.text((120, 158), "switching off", fill=(140, 140, 160), font=font_sub, anchor="mm")
         display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
     except Exception:
         pass
 
-    time.sleep(1.0)
+    time.sleep(3.0)
 
     try:
         player.stop_playback(state)
