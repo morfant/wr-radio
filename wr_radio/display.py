@@ -7,7 +7,6 @@ import pytz
 # LCD 핀은 main에서 GPIO setup 후 사용
 # SPI 객체는 state.spi 사용
 
-# LCD 컨트롤 커맨드들(현재 네 코드 그대로)
 def reset(GPIO, RST_PIN):
     GPIO.output(RST_PIN, GPIO.HIGH)
     time.sleep(0.01)
@@ -179,8 +178,6 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
 
 
 def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
-    """배터리 아이콘 그리기 (약 28x13 픽셀)"""
-    # 배터리 외곽선
     if percent <= 15:
         outline_color = (255, 50, 50)
     elif percent >= 80:
@@ -188,10 +185,8 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
     else:
         outline_color = (100, 100, 100)
     draw.rectangle([x, y + 2, x + 24, y + 12], outline=outline_color)
-    # 배터리 양극 돌출부
     draw.rectangle([x + 24, y + 5, x + 26, y + 9], fill=outline_color)
 
-    # 충전량에 따른 내부 채우기 (최대 폭 22px)
     fill_width = max(0, int(22 * percent / 100))
     if fill_width > 0:
         if percent <= 15:
@@ -206,8 +201,6 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
 
 
 def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool = True):
-    """배터리 상태를 화면 좌상단에 그리기 (아이콘만)"""
-    # 저전력 점멸: blink_on=False면 아이콘 안 그림
     if percent <= 15 and not blink_on:
         return
     draw_battery_icon(draw, 4, 4, percent)
@@ -215,7 +208,6 @@ def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool 
 
 def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int, volume: int = 100):
     center_y = 145
-    # 볼륨에 따라 진폭 조절 (최소 2, 최대 12)
     amplitude = max(2, int(volume * 12 / 100))
     wavelength = 40
     num_points = 200
@@ -232,16 +224,14 @@ def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int, volume: int 
 
 
 def draw_loading_indicator(draw: ImageDraw.ImageDraw, frame: int):
-    """간단한 로딩 표시 (점 3개 애니메이션)"""
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
     except Exception:
         font = ImageFont.load_default()
-    
-    # 점 개수를 frame에 따라 변경 (0, 1, 2, 3 순환)
+
     dots = "." * ((frame // 5) % 4)
-    text = f"Loading{dots}   "  # 공백으로 이전 점 지우기
-    
+    text = f"Loading{dots}   "
+
     bbox = draw.textbbox((0, 0), text, font=font)
     tw = bbox[2] - bbox[0]
     x = (240 - tw) // 2
@@ -267,20 +257,18 @@ def display_mode_indicator(GPIO, pins, state, mode: str, value: int):
 
     bbox = draw.textbbox((0, 0), text, font=font_small)
     text_width = bbox[2] - bbox[0]
-    x = max(5, 240 - text_width - 8)  # 최소 5px 여백 보장, 오른쪽 8px
+    x = max(5, 240 - text_width - 8)
     draw.text((x, 8), text, font=font_small, fill=color)
 
     display_image_region(GPIO, pins, state, image, 0, 0, 239, 25)
 
 
 def display_battery_only(GPIO, pins, state):
-    """배터리 영역만 부분 업데이트 (상단 좌측)"""
     if state.battery_monitor is None:
         return
     voltage, percent = state.battery_monitor.get_status()
     blink_on = state.battery_monitor.is_blink_on()
 
-    # 저전력이 아니면 값 변화 없을 때 스킵
     if not state.battery_monitor.is_low and percent == state.last_battery_percent:
         return
 
@@ -290,6 +278,24 @@ def display_battery_only(GPIO, pins, state):
     display_image_region(GPIO, pins, state, image, 0, 0, 35, 18)
 
     state.last_battery_percent = percent
+
+
+def _draw_button_hint(draw: ImageDraw.ImageDraw):
+    """normal 모드 하단 상시 힌트 — press: 점, hold: 선"""
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 11)
+    except Exception:
+        font = ImageFont.load_default()
+
+    color = (110, 110, 130)
+
+    # press: 점 + 텍스트
+    draw.ellipse([50, 224, 56, 230], fill=color)
+    draw.text((62, 227), "Vol", fill=color, font=font, anchor="lm")
+
+    # hold: 선 + 텍스트
+    draw.line([(130, 227), (148, 227)], fill=color, width=2)
+    draw.text((154, 227), "System", fill=color, font=font, anchor="lm")
 
 
 def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
@@ -350,10 +356,10 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
             try:
                 tz = pytz.timezone(station["timezone"])
                 local_time = datetime.now(tz)
-                utc_offset = local_time.strftime("%z")  # +0900
-                utc_offset_str = f"UTC{utc_offset[:3]}:{utc_offset[3:]}"  # UTC+09:00
+                utc_offset = local_time.strftime("%z")
+                utc_offset_str = f"UTC{utc_offset[:3]}:{utc_offset[3:]}"
                 time_str = f"{local_time.strftime('%H:%M')} ({utc_offset_str})"
-                
+
                 bbox = draw.textbbox((0, 0), time_str, font=font_tiny)
                 tw = bbox[2] - bbox[0]
                 x = (240 - tw) // 2
@@ -361,7 +367,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
             except Exception as e:
                 print(f"⚠️  타임존 처리 실패: {e}")
 
-        # 날씨 아이콘 (시간 표시 때문에 아래로 이동)
+        # 날씨 아이콘
         if weather_data:
             icon_x = 90
             icon_y = location_y + 40
@@ -377,12 +383,16 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
 
         display_image_region(GPIO, pins, state, image, 0, 0, 239, 115)
 
+        # station 번호 + 힌트 (y=168~239)
         station_num = f"{state.current_index + 1} / {len(state.radio_stations)}"
         bbox = draw.textbbox((0, 0), station_num, font=font_medium)
         tw = bbox[2] - bbox[0]
         x = (240 - tw) // 2
-        draw.text((x, 200), station_num, font=font_medium, fill=(120, 120, 120))
-        display_image_region(GPIO, pins, state, image, 0, 195, 239, 239)
+        draw.text((x, 178), station_num, font=font_medium, fill=(120, 120, 120))
+
+        _draw_button_hint(draw)
+
+        display_image_region(GPIO, pins, state, image, 0, 168, 239, 239)
 
         state.last_displayed_index = state.current_index
 

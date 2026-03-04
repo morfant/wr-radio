@@ -131,10 +131,7 @@ def draw_system_menu(state: AppState, selected_index: int) -> Image.Image:
         is_selected = (i == selected_index)
 
         if is_selected:
-            # 선택 배경
             draw.rounded_rectangle([(16, y - 2), (224, y + 30)], radius=6, fill=(25, 25, 40))
-            # 왼쪽 액센트 바
-            draw.rounded_rectangle([(16, y - 2), (21, y + 30)], radius=3, fill=(100, 100, 220))
             label_color = (230, 230, 255)
         else:
             label_color = (100, 100, 120)
@@ -150,23 +147,11 @@ def draw_brightness_menu(state: AppState) -> Image.Image:
     draw = ImageDraw.Draw(img)
 
     font_title = load_font(13, bold=False)
-    font_value = load_font(28, bold=False)
-    font_hint  = load_font(12, bold=False)
+    font_value = load_font(22, bold=False)
 
     draw.text((20, 18), "Brightness", fill=(80, 80, 100), font=font_title)
     draw.line([(20, 38), (220, 38)], fill=(40, 40, 50), width=1)
-
-    # 값 표시
-    draw.text((120, 115), f"{state.current_brightness}%", fill=(230, 230, 255), font=font_value, anchor="mm")
-
-    # 프로그레스 바
-    bar_x, bar_y, bar_w, bar_h = 20, 155, 200, 8
-    draw.rounded_rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], radius=4, fill=(30, 30, 45))
-    filled = int(bar_w * state.current_brightness / 100)
-    if filled > 0:
-        draw.rounded_rectangle([(bar_x, bar_y), (bar_x + filled, bar_y + bar_h)], radius=4, fill=(100, 100, 220))
-
-    draw.text((120, 190), "Rotate to adjust", fill=(60, 60, 80), font=font_hint, anchor="mm")
+    draw.text((120, 120), f"{state.current_brightness}%", fill=(230, 230, 255), font=font_value, anchor="mm")
 
     return img
 
@@ -443,7 +428,6 @@ def main():
 
             if ev == "exit_mode":
                 if state.current_mode == "brightness":
-                    # 밝기 모드 → 시스템 메뉴 복귀
                     state.current_mode = "system_menu"
                     state.mode_enter_time = now
                     print("→ 시스템 메뉴")
@@ -452,7 +436,6 @@ def main():
                     img = draw_system_menu(state, menu_index)
                     display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
                 else:
-                    # 볼륨 모드 → normal 복귀
                     state.current_mode = "normal"
                     print("→ 일반 모드")
                     wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
