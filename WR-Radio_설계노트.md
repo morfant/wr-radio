@@ -279,10 +279,17 @@ main.py
 재부팅 후 이전 로그 확인을 위해 아래 설정 적용:
 ```bash
 sudo mkdir -p /var/log/journal
-sudo systemd-tmpfiles --create --prefix /var/log/journal
+sudo mkdir -p /etc/systemd/journald.conf.d
+sudo tee /etc/systemd/journald.conf.d/persistent.conf << EOF
+[Journal]
+Storage=persistent
+EOF
 sudo systemctl restart systemd-journald
+sudo reboot
 ```
 이후 `journalctl -b -1`로 직전 세션 로그 확인 가능.
+
+> ⚠️ **배포판 제작 시 주의**: SD카드에 로그를 계속 쌓으면 쓰기 횟수 증가 → SD카드 수명 단축. 개발/디버깅 용도로만 사용하고, 배포판 이미지에서는 `Storage=volatile`(메모리 저장)로 되돌릴 것.
 
 ---
 
