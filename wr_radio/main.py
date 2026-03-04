@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from PIL import ImageDraw
+from PIL import ImageDraw, ImageFont
 import os
 import sys
 import time
@@ -29,6 +29,26 @@ PIN_CS = 26
 PIN_DC = 13
 PIN_RST = 6
 PIN_BL = 12
+
+# 시스템 메뉴 항목
+SYSTEM_MENU_ITEMS = [
+    {"label": "Brightness", "action": "brightness"},
+    {"label": "Bluetooth",  "action": "bluetooth"},
+    {"label": "Power Off",  "action": "shutdown"},
+    {"label": "Back",       "action": "back"},
+]
+
+# 폰트 경로
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FONT_PATH_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+
+def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    try:
+        path = FONT_PATH if bold else FONT_PATH_REGULAR
+        return ImageFont.truetype(path, size)
+    except Exception:
+        return ImageFont.load_default()
 
 
 def acquire_lock():
@@ -58,7 +78,6 @@ def release_lock():
 
 
 def pwm_safe_close(state: AppState):
-    """PWM 객체 stop + del + None (종료시 __del__ 예외 방지 목적)"""
     try:
         if state.pwm_backlight is not None:
             try:
@@ -80,7 +99,6 @@ def set_brightness(state: AppState, level: int, bl_pin: int) -> int:
         state.pwm_backlight.start(level)
         state.current_brightness = level
         return level
-
     try:
         state.pwm_backlight.ChangeDutyCycle(level)
         state.current_brightness = level
@@ -91,6 +109,127 @@ def set_brightness(state: AppState, level: int, bl_pin: int) -> int:
         state.pwm_backlight.start(level)
         state.current_brightness = level
         return level
+
+
+def draw_system_menu(state: AppState, selected_index: int) -> Image.Image:
+    """시스템 메뉴 화면 렌더링"""
+    img = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    font_title = load_font(13, bold=False)
+    font_item  = load_font(15, bold=False)
+
+    # 타이틀
+    draw.text((20, 18), "System", fill=(80, 80, 100), font=font_title)
+    draw.line([(20, 38), (220, 38)], fill=(40, 40, 50), width=1)
+
+    # 메뉴 항목
+    item_h = 44
+    start_y = 55
+    for i, item in enumerate(SYSTEM_MENU_ITEMS):
+        y = start_y + i * item_h
+        is_selected = (i == selected_index)
+
+        if is_selected:
+            # 선택 배경
+            draw.rounded_rectangle([(16, y - 2), (224, y + 30)], radius=6, fill=(25, 25, 40))
+            # 왼쪽 액센트 바
+            draw.rounded_rectangle([(16, y - 2), (21, y + 30)], radius=3, fill=(100, 100, 220))
+            label_color = (230, 230, 255)
+        else:
+            label_color = (100, 100, 120)
+
+        draw.text((32, y + 4), item["label"], fill=label_color, font=font_item)
+
+    return img
+
+
+def draw_brightness_menu(state: AppState) -> Image.Image:
+    """밝기 조절 화면"""
+    img = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    font_title = load_font(13, bold=False)
+    font_value = load_font(28, bold=False)
+    font_hint  = load_font(12, bold=False)
+
+    draw.text((20, 18), "Brightness", fill=(80, 80, 100), font=font_title)
+    draw.line([(20, 38), (220, 38)], fill=(40, 40, 50), width=1)
+
+    # 값 표시
+    draw.text((120, 115), f"{state.current_brightness}%", fill=(230, 230, 255), font=font_value, anchor="mm")
+
+    # 프로그레스 바
+    bar_x, bar_y, bar_w, bar_h = 20, 155, 200, 8
+    draw.rounded_rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], radius=4, fill=(30, 30, 45))
+    filled = int(bar_w * state.current_brightness / 100)
+    if filled > 0:
+        draw.rounded_rectangle([(bar_x, bar_y), (bar_x + filled, bar_y + bar_h)], radius=4, fill=(100, 100, 220))
+
+    draw.text((120, 190), "Rotate to adjust", fill=(60, 60, 80), font=font_hint, anchor="mm")
+
+    return img
+
+
+def return_to_normal(state: AppState, gpio_pins: dict, radio_stations: list, current_index: int):
+    """시스템 메뉴에서 normal 복귀 시 화면 완전 초기화 후 재렌더"""
+    try:
+        blank = Image.new("RGB", (240, 240), (0, 0, 0))
+        display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, blank)
+    except Exception:
+        pass
+    wd = weather.get_cached_weather(state, radio_stations[current_index]["lat"], radio_stations[current_index]["lon"])
+    display.display_radio_info(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, weather_data=wd, force_full=True)
+    state.last_displayed_weather = wd
+
+
+def do_shutdown(state: AppState, gpio_pins: dict):
+    """설정 저장 → LCD 메시지 → mpv 종료 → halt"""
+    print("\n🔴 종료 시작...")
+
+    if state.needs_save:
+        save_settings(state.current_index, state.current_volume, state.current_brightness)
+        state.needs_save = False
+
+    try:
+        img = Image.new("RGB", (240, 240), (0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        font = load_font(18, bold=True)
+        draw.text((120, 115), "Shutting down...", fill=(200, 60, 60), font=font, anchor="mm")
+        display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
+    except Exception:
+        pass
+
+    time.sleep(1.0)
+
+    try:
+        player.stop_playback(state)
+    except Exception:
+        pass
+
+    try:
+        img = Image.new("RGB", (240, 240), (0, 0, 0))
+        display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
+    except Exception:
+        pass
+
+    os.system("sudo halt")
+
+
+def do_bluetooth(state: AppState, gpio_pins: dict):
+    """블루투스 설정 (placeholder)"""
+    print("🔵 블루투스 설정 (미구현)")
+    try:
+        img = Image.new("RGB", (240, 240), (0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        font_title = load_font(18, bold=True)
+        font_sub   = load_font(14, bold=False)
+        draw.text((120, 105), "Bluetooth", fill=(100, 140, 255), font=font_title, anchor="mm")
+        draw.text((120, 135), "Coming soon...", fill=(70, 70, 90), font=font_sub, anchor="mm")
+        display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
+    except Exception:
+        pass
+    time.sleep(2.0)
 
 
 def main():
@@ -107,7 +246,6 @@ def main():
     if not (0 <= state.current_index < len(state.radio_stations)):
         state.current_index = 0
 
-    # 저장된 볼륨/밝기 로드
     state.current_volume = cfg.get("last_volume", 50)
     state.current_brightness = cfg.get("last_brightness", 100)
     print(f"🔊 볼륨: {state.current_volume}%  💡 밝기: {state.current_brightness}%")
@@ -150,7 +288,7 @@ def main():
     print("LCD 초기화 중...")
     display.init_display(GPIO, {"CS": PIN_CS, "DC": PIN_DC, "RST": PIN_RST}, state, rotation=90)
 
-    # PWM init (저장된 밝기값 적용)
+    # PWM init
     pwm_safe_close(state)
     try:
         state.pwm_backlight = GPIO.PWM(PIN_BL, 1000)
@@ -179,14 +317,10 @@ def main():
         release_lock()
         return
 
-    # 저장된 볼륨 적용
     player.set_volume(state, state.current_volume)
-
-    # 오디오 모니터링 스레드 시작
     player.start_audio_monitor(state)
     print("🎧 오디오 모니터 시작")
 
-    # 배터리 모니터 시작
     bat_mon = BatteryMonitor()
     if bat_mon.start():
         state.battery_monitor = bat_mon
@@ -194,18 +328,14 @@ def main():
         print("⚠️  배터리 모니터 없이 진행")
         state.battery_monitor = None
 
-    # initial render
     wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
 
-    # auto play
     player.play_station(state, state.current_index)
     state.is_playing = True
 
-    # 초기 날씨 요청
     weather.start_weather_update(state, state.current_index)
 
-    # input loop vars
     input_cfg = InputConfig(
         rotation_debounce_sec=0.02,
         play_switch_delay_sec=0.40,
@@ -223,13 +353,14 @@ def main():
     last_animation_update = 0.0
     last_battery_update = 0.0
     last_weather_check = 0.0
+    menu_index = 0
 
     print("=" * 50)
     print("📻 WR-Radio (Modular)")
     print("=" * 50)
     print("로터리: 방송국 선택")
     print("버튼 짧게: 볼륨 조절 모드")
-    print("버튼 길게: 밝기 조절 모드")
+    print("버튼 1초: 시스템 메뉴")
     print("모드에서 버튼: 일반 모드 복귀")
     print("Ctrl+C: 종료")
     print("=" * 50)
@@ -238,12 +369,37 @@ def main():
         while True:
             now = time.time()
 
-            # mode timeout auto return
-            if state.current_mode != "normal" and (now - state.mode_enter_time) >= input_cfg.mode_timeout_sec:
+            # volume 모드 타임아웃 → normal 복귀
+            if (
+                state.current_mode == "volume"
+                and (now - state.mode_enter_time) >= input_cfg.mode_timeout_sec
+            ):
                 state.current_mode = "normal"
                 print("→ 일반 모드 (자동)")
-                wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
-                display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
+                return_to_normal(state, pins, state.radio_stations, state.current_index)
+
+            # system_menu 타임아웃 → normal 복귀
+            elif (
+                state.current_mode == "system_menu"
+                and (now - state.mode_enter_time) >= input_cfg.mode_timeout_sec
+            ):
+                state.current_mode = "normal"
+                menu_index = 0
+                print("→ 일반 모드 (메뉴 타임아웃)")
+                return_to_normal(state, pins, state.radio_stations, state.current_index)
+
+            # brightness 모드 타임아웃 → system_menu 복귀
+            elif (
+                state.current_mode == "brightness"
+                and (now - state.mode_enter_time) >= input_cfg.mode_timeout_sec
+            ):
+                state.current_mode = "system_menu"
+                state.mode_enter_time = now
+                print("→ 시스템 메뉴 (자동)")
+                blank = Image.new("RGB", (240, 240), (0, 0, 0))
+                display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, blank)
+                img = draw_system_menu(state, menu_index)
+                display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
 
             # rotary
             s1_last, direction, last_rotation_time = read_rotary(
@@ -259,38 +415,91 @@ def main():
                     state.pending_play = True
                     state.last_station_change_time = now
                     state.last_displayed_weather = None
+
                 elif state.current_mode == "volume":
                     player.set_volume(state, state.current_volume + direction * 5)
                     state.needs_save = True
                     state.last_change_time = now
                     state.mode_enter_time = now
                     display.display_mode_indicator(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, "volume", state.current_volume)
+
                 elif state.current_mode == "brightness":
                     set_brightness(state, state.current_brightness + direction * 10, PIN_BL)
                     state.needs_save = True
                     state.last_change_time = now
                     state.mode_enter_time = now
-                    display.display_mode_indicator(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, "brightness", state.current_brightness)
+                    img = draw_brightness_menu(state)
+                    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
+
+                elif state.current_mode == "system_menu":
+                    menu_index = (menu_index + direction) % len(SYSTEM_MENU_ITEMS)
+                    state.mode_enter_time = now
+                    print(f"→ 메뉴: {SYSTEM_MENU_ITEMS[menu_index]['label']}")
+                    img = draw_system_menu(state, menu_index)
+                    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
 
             # button events
             key_last, ev = handle_button(GPIO, pins, state, now, key_last, btn_state, input_cfg)
-            if ev == "exit_mode":
-                state.current_mode = "normal"
-                print("→ 일반 모드")
-                wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
-                display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
 
-            elif ev == "enter_brightness":
-                state.current_mode = "brightness"
-                state.mode_enter_time = now
-                print("💡 밝기 조절 모드")
-                display.display_mode_indicator(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, "brightness", state.current_brightness)
+            if ev == "exit_mode":
+                if state.current_mode == "brightness":
+                    # 밝기 모드 → 시스템 메뉴 복귀
+                    state.current_mode = "system_menu"
+                    state.mode_enter_time = now
+                    print("→ 시스템 메뉴")
+                    blank = Image.new("RGB", (240, 240), (0, 0, 0))
+                    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, blank)
+                    img = draw_system_menu(state, menu_index)
+                    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
+                else:
+                    # 볼륨 모드 → normal 복귀
+                    state.current_mode = "normal"
+                    print("→ 일반 모드")
+                    wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
+                    display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
 
             elif ev == "enter_volume":
                 state.current_mode = "volume"
                 state.mode_enter_time = now
                 print("🔊 볼륨 조절 모드")
                 display.display_mode_indicator(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, "volume", state.current_volume)
+
+            elif ev == "enter_system_menu":
+                state.current_mode = "system_menu"
+                state.mode_enter_time = now
+                menu_index = 0
+                print("⚙️  시스템 메뉴")
+                img = draw_system_menu(state, menu_index)
+                display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
+
+            elif ev == "menu_select":
+                action = SYSTEM_MENU_ITEMS[menu_index]["action"]
+                print(f"✅ 선택: {SYSTEM_MENU_ITEMS[menu_index]['label']}")
+
+                if action == "shutdown":
+                    do_shutdown(state, pins)
+                    break
+
+                elif action == "bluetooth":
+                    do_bluetooth(state, pins)
+                    state.current_mode = "normal"
+                    menu_index = 0
+                    return_to_normal(state, pins, state.radio_stations, state.current_index)
+
+                elif action == "brightness":
+                    state.current_mode = "brightness"
+                    state.mode_enter_time = now
+                    print("💡 밝기 조절 모드")
+                    blank = Image.new("RGB", (240, 240), (0, 0, 0))
+                    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, blank)
+                    img = draw_brightness_menu(state)
+                    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
+
+                elif action == "back":
+                    state.current_mode = "normal"
+                    menu_index = 0
+                    print("→ 일반 모드 (메뉴 복귀)")
+                    return_to_normal(state, pins, state.radio_stations, state.current_index)
 
             # display update after input settled (normal mode)
             if state.current_mode == "normal":
@@ -306,19 +515,16 @@ def main():
             if state.pending_play and (now - state.last_station_change_time) >= input_cfg.play_switch_delay_sec:
                 player.play_station(state, state.current_index)
                 state.pending_play = False
-                # 부하 변동 → 배터리 샘플링 일시 정지
                 if state.battery_monitor:
                     state.battery_monitor.pause_sampling()
-                # 채널 변경 시 애니메이션 영역 즉시 지우기
                 img = Image.new("RGB", (240, 240), (0, 0, 0))
                 display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
                 state.animation_frame = 0
                 state.animation_cleared = True
 
-            # 애니메이션: audio_playing 플래그 기반 (normal 모드에서만)
+            # 애니메이션 (normal 모드에서만)
             if state.is_playing and state.current_mode == "normal":
                 if state.audio_playing:
-                    # 실제 소리 나는 중 → 사인파 애니메이션 (볼륨 기반 진폭)
                     state.animation_cleared = False
                     if (now - last_animation_update) >= 1.0:
                         img = Image.new("RGB", (240, 240), (0, 0, 0))
@@ -328,7 +534,6 @@ def main():
                         display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
                         last_animation_update = now
                 else:
-                    # 재생 명령 보냈지만 아직 소리 안 남 → Loading
                     state.animation_cleared = False
                     if (now - last_animation_update) >= 0.2:
                         img = Image.new("RGB", (240, 240), (0, 0, 0))
@@ -339,21 +544,19 @@ def main():
                         last_animation_update = now
 
             elif not state.is_playing and not state.animation_cleared:
-                # 재생 중지 → 영역 지우기
                 img = Image.new("RGB", (240, 240), (0, 0, 0))
                 display.display_image_region(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img, 0, 125, 239, 165)
                 state.animation_frame = 0
                 state.animation_cleared = True
 
-            # 배터리 상태 주기적 업데이트 (normal 모드에서만)
-            # 저전력 시 1초 간격 (점멸), 그 외 30초 간격
+            # 배터리 업데이트 (normal 모드에서만)
             if state.current_mode == "normal" and state.battery_monitor is not None:
                 bat_interval = 1.0 if state.battery_monitor.is_low else 30.0
                 if (now - last_battery_update) >= bat_interval:
                     display.display_battery_only(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
                     last_battery_update = now
 
-            # 날씨 데이터 도착 시 화면 갱신 (2초마다 체크)
+            # 날씨 데이터 도착 시 화면 갱신
             if state.current_mode == "normal" and (now - last_weather_check) >= 2.0:
                 last_weather_check = now
                 st = state.radio_stations[state.current_index]
@@ -362,7 +565,7 @@ def main():
                     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
                     state.last_displayed_weather = wd
 
-            # save (station, volume, brightness 통합)
+            # save
             if state.needs_save and (now - state.last_change_time) >= input_cfg.save_delay_sec:
                 save_settings(state.current_index, state.current_volume, state.current_brightness)
                 state.needs_save = False
