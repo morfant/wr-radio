@@ -200,6 +200,22 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
         draw.rectangle([x + 1, y + 3, x + fill_width, y + 11], fill=fill_color)
 
 
+def draw_bt_indicator(draw: ImageDraw.ImageDraw, connected: bool):
+    """배터리 아이콘 우측에 BT 아이콘. 연결 시에만 표시."""
+    if not connected:
+        return
+    x, y = 36, 4
+    color = (100, 160, 255)
+    # 원 (지름 14px, 배터리 높이와 맞춤)
+    draw.ellipse([x, y, x + 13, y + 13], outline=color, width=1)
+    # 원 안에 B
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10)
+    except Exception:
+        font = ImageFont.load_default()
+    draw.text((x + 7, y + 7), "B", font=font, fill=color, anchor="mm")
+
+
 def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool = True):
     if percent <= 15 and not blink_on:
         return
@@ -375,11 +391,14 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
             draw.text((icon_x + 28, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
 
-        # 배터리 상태 (좌상단)
+        # 배터리 + BT 상태 (상단)
         if state.battery_monitor is not None:
             voltage, percent = state.battery_monitor.get_status()
             draw_battery_status(draw, percent, state.battery_monitor.is_blink_on())
             state.last_battery_percent = percent
+
+        bt_connected = getattr(state, "output_mode", "speaker") == "bluetooth"
+        draw_bt_indicator(draw, bt_connected)
 
         display_image_region(GPIO, pins, state, image, 0, 0, 239, 115)
 

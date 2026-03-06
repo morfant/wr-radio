@@ -414,6 +414,23 @@ def main():
         return
 
     player.set_volume(state, state.current_volume)
+
+    # ── 시작 시 BT 상태 감지 ──────────────────────────────
+    # 부팅 시 BT 장치가 이미 연결되어 있으면 BT 모드로 초기화
+    existing_sink = bluetooth.get_current_bt_sink()
+    if existing_sink:
+        devices = bluetooth.get_paired_devices()
+        connected_mac = next(
+            (mac for mac, _ in devices if bluetooth.is_device_connected(mac)), ""
+        )
+        if connected_mac:
+            state.output_mode = "bluetooth"
+            state.bt_sink = existing_sink
+            state.bt_mac = connected_mac
+            print(f"🔵 BT 장치 감지됨: {connected_mac} → BT 모드로 시작")
+            # mpv를 BT sink로 재시작
+            player.restart_mpv(state)
+
     player.start_audio_monitor(state)
     print("🎧 오디오 모니터 시작")
 
