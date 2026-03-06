@@ -59,7 +59,7 @@ def mpv_cmd(state, payload: dict) -> bool:
 
 
 def _get_core_idle(state) -> bool:
-    """core-idle 값 반환. True = 재생 안 됨, False = 재생 중. 실패 시 True 반환."""
+    """core-idle 값 반환. True = 재생 안 됨. 실패 시 True 반환."""
     try:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(0.3)
@@ -79,19 +79,29 @@ def _get_core_idle(state) -> bool:
     except Exception:
         return True
 
+
 def _audio_monitor_thread(state) -> None:
     last_hp = is_headphone_inserted()
-    set_amp_power(not last_hp)
+    # BT 모드일 때는 앰프 끔
+    if state.output_mode == "bluetooth":
+        set_amp_power(False)
+    else:
+        set_amp_power(not last_hp)
 
     while not state.shutting_down:
-        hp = is_headphone_inserted()
-        if hp != last_hp:
-            time.sleep(0.5)  # 50ms 대기 후 재확인
+        # BT 모드에서는 헤드폰 감지 무시, 앰프 항상 OFF
+        if state.output_mode == "bluetooth":
+            set_amp_power(False)
+            last_hp = is_headphone_inserted()
+        else:
             hp = is_headphone_inserted()
-            if hp != last_hp:  # 여전히 바뀐 상태면 확정
-                set_amp_power(not hp)
-                last_hp = hp
-                print(f"🎧 헤드폰 {'삽입' if hp else '제거'} → 앰프 {'OFF' if hp else 'ON'}")
+            if hp != last_hp:
+                time.sleep(0.5)
+                hp = is_headphone_inserted()
+                if hp != last_hp:
+                    set_amp_power(not hp)
+                    last_hp = hp
+                    print(f"🎧 헤드폰 {'삽입' if hp else '제거'} → 앰프 {'OFF' if hp else 'ON'}")
 
         if state.is_playing:
             idle = _get_core_idle(state)
@@ -100,22 +110,15 @@ def _audio_monitor_thread(state) -> None:
             state.audio_playing = False
         time.sleep(0.5)
 
+
 def start_audio_monitor(state) -> threading.Thread:
     t = threading.Thread(target=_audio_monitor_thread, args=(state,), daemon=True)
     t.start()
     return t
 
 
-def ensure_mpv_running(state) -> bool:
-    if _can_connect(state.mpv_sock):
-        return True
-
-    try:
-        if os.path.exists(state.mpv_sock):
-            os.remove(state.mpv_sock)
-    except Exception:
-        pass
-
+def _build_mpv_cmd(state) -> list[str]:
+    """현재 output_mode에 맞는 mpv 실행 명령 생성"""
     cmd = [
         "mpv",
         "--no-video",
@@ -133,6 +136,30 @@ def ensure_mpv_running(state) -> bool:
         "--network-timeout=3",
     ]
 
+    if state.output_mode == "bluetooth" and state.bt_sink:
+        # PulseAudio BT sink로 출력
+        cmd.append(f"--audio-device=pulse/{state.bt_sink}")
+        print(f"🔵 mpv 출력 장치: pulse/{state.bt_sink}")
+    else:
+        # 기본 ALSA (I2S DAC)
+        print("🔊 mpv 출력 장치: ALSA 기본")
+
+    return cmd
+
+
+def ensure_mpv_running(state) -> bool:
+    """mpv가 실행 중이면 그대로 반환. 아니면 현재 output_mode로 새로 시작."""
+    if _can_connect(state.mpv_sock):
+        return True
+
+    try:
+        if os.path.exists(state.mpv_sock):
+            os.remove(state.mpv_sock)
+    except Exception:
+        pass
+
+    cmd = _build_mpv_cmd(state)
+
     try:
         state.player_process = subprocess.Popen(
             cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -147,6 +174,40 @@ def ensure_mpv_running(state) -> bool:
         return False
 
     return True
+
+
+def restart_mpv(state) -> bool:
+    """
+    mpv를 완전히 종료 후 현재 output_mode로 재시작.
+    출력 장치 전환(BT ↔ 스피커) 시 호출.
+    """
+    print("🔄 mpv 재시작 중...")
+
+    # 기존 프로세스 종료
+    try:
+        if state.player_process:
+            state.player_process.terminate()
+            state.player_process.wait(timeout=3)
+    except Exception:
+        pass
+
+    try:
+        if os.path.exists(state.mpv_sock):
+            os.remove(state.mpv_sock)
+    except Exception:
+        pass
+
+    state.player_process = None
+    time.sleep(0.3)
+
+    # 새 output_mode로 재시작
+    ok = ensure_mpv_running(state)
+    if ok:
+        set_volume(state, state.current_volume)
+        print("✅ mpv 재시작 완료")
+    else:
+        print("❌ mpv 재시작 실패")
+    return ok
 
 
 def stop_playback(state) -> None:

@@ -17,6 +17,7 @@ from . import weather
 from . import display
 from .input import InputConfig, ButtonState, read_rotary, handle_button
 from .battery import BatteryMonitor
+from . import bluetooth
 
 LOCK_FILE = "/tmp/wr_radio.lock"
 
@@ -203,19 +204,127 @@ def do_shutdown(state: AppState, gpio_pins: dict):
     os.system("sudo halt")
 
 
+def _draw_bt_screen(state: AppState, gpio_pins: dict, title: str, lines: list[tuple[str, tuple]]):
+    """BT 관련 화면 공통 렌더링"""
+    img = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font_title = load_font(16, bold=True)
+    font_body  = load_font(13, bold=False)
+    draw.text((20, 18), title, fill=(100, 140, 255), font=font_title)
+    draw.line([(20, 40), (220, 40)], fill=(40, 40, 60), width=1)
+    for i, (text, color) in enumerate(lines):
+        draw.text((20, 58 + i * 24), text, fill=color, font=font_body)
+    display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
+
+
 def do_bluetooth(state: AppState, gpio_pins: dict):
-    """블루투스 설정 (placeholder)"""
-    print("🔵 블루투스 설정 (미구현)")
-    try:
-        img = Image.new("RGB", (240, 240), (0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        font_title = load_font(18, bold=True)
-        font_sub   = load_font(14, bold=False)
-        draw.text((120, 105), "Bluetooth", fill=(100, 140, 255), font=font_title, anchor="mm")
-        draw.text((120, 135), "Coming soon...", fill=(70, 70, 90), font=font_sub, anchor="mm")
-        display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
-    except Exception:
-        pass
+    """
+    블루투스 출력 전환.
+    - speaker 모드 → BT 연결 후 BT 모드로 전환
+    - bluetooth 모드 → 연결 해제 후 speaker 모드로 전환
+    """
+    pins_disp = {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}
+
+    # ── 현재 BT 모드 → 스피커로 복귀 ──────────────────────
+    if state.output_mode == "bluetooth":
+        print("🔵 BT 해제 → 스피커 전환")
+        _draw_bt_screen(state, gpio_pins,
+            "Bluetooth",
+            [("Disconnecting...", (180, 180, 180))]
+        )
+
+        if state.bt_mac:
+            bluetooth.disconnect(state.bt_mac)
+
+        state.output_mode = "speaker"
+        state.bt_mac = ""
+        state.bt_sink = ""
+
+        was_playing = state.is_playing
+        player.stop_playback(state)
+        player.restart_mpv(state)
+
+        if was_playing:
+            player.play_station(state, state.current_index)
+
+        _draw_bt_screen(state, gpio_pins,
+            "Bluetooth",
+            [("Disconnected", (100, 200, 100)),
+             ("Output: Speaker", (180, 180, 180))]
+        )
+        time.sleep(1.5)
+        return
+
+    # ── 스피커 모드 → BT 연결 시도 ────────────────────────
+    print("🔵 BT 연결 시도")
+
+    devices = bluetooth.get_paired_devices()
+    if not devices:
+        _draw_bt_screen(state, gpio_pins,
+            "Bluetooth",
+            [("No paired devices", (200, 80, 80)),
+             ("Pair via bluetoothctl", (100, 100, 120))]
+        )
+        time.sleep(2.5)
+        return
+
+    # 페어링된 장치 목록 표시
+    lines = [("Paired devices:", (120, 120, 140))]
+    for mac, name in devices[:4]:
+        lines.append((f"  {name[:22]}", (180, 180, 200)))
+    lines.append(("Connecting...", (255, 200, 80)))
+    _draw_bt_screen(state, gpio_pins, "Bluetooth", lines)
+
+    # 이미 연결된 sink가 있는지 먼저 확인
+    existing_sink = bluetooth.get_current_bt_sink()
+    if existing_sink:
+        mac, name = devices[0]
+        print(f"  기존 BT sink 재활용: {existing_sink}")
+        state.bt_sink = existing_sink
+        state.bt_mac = mac
+    else:
+        # 첫 번째 장치에 연결
+        mac, name = devices[0]
+        ok = bluetooth.connect(mac)
+        if not ok:
+            _draw_bt_screen(state, gpio_pins,
+                "Bluetooth",
+                [(f"Connect failed", (200, 80, 80)),
+                 (f"{name[:24]}", (120, 120, 140))]
+            )
+            time.sleep(2.5)
+            return
+
+        sink = bluetooth.find_bt_sink()
+        if not sink:
+            _draw_bt_screen(state, gpio_pins,
+                "Bluetooth",
+                [("Sink not found", (200, 80, 80)),
+                 ("Check PulseAudio", (120, 120, 140))]
+            )
+            bluetooth.disconnect(mac)
+            time.sleep(2.5)
+            return
+
+        state.bt_sink = sink
+        state.bt_mac = mac
+
+    # mpv 재시작 (BT sink로)
+    state.output_mode = "bluetooth"
+    was_playing = state.is_playing
+    player.stop_playback(state)
+    player.restart_mpv(state)
+
+    if was_playing:
+        player.play_station(state, state.current_index)
+
+    mac, name = devices[0]
+    _draw_bt_screen(state, gpio_pins,
+        "Bluetooth",
+        [("Connected", (100, 200, 100)),
+         (f"{name[:24]}", (180, 180, 255)),
+         ("Output: Bluetooth", (180, 180, 180))]
+    )
     time.sleep(2.0)
 
 

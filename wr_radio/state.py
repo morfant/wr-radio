@@ -10,7 +10,7 @@ class AppState:
 
     # runtime flags
     is_playing: bool = False
-    current_mode: str = "normal"  # 'normal', 'volume', 'brightness'
+    current_mode: str = "normal"  # 'normal', 'volume', 'brightness', 'system_menu'
 
     # mode values
     current_volume: int = 50
@@ -26,15 +26,15 @@ class AppState:
     last_displayed_index: int = -1
     last_displayed_playing: Optional[bool] = None
     animation_frame: int = 0
-    animation_cleared: bool = False  # 애니메이션 영역 지우기 완료 여부
+    animation_cleared: bool = False
 
     # audio monitoring
-    audio_playing: bool = False      # 실제 소리 나는 중 (폴링 스레드가 세팅)
-    shutting_down: bool = False      # 종료 신호 (폴링 스레드 정지용)
+    audio_playing: bool = False
+    shutting_down: bool = False
 
     # battery
-    battery_monitor: Any = None      # BatteryMonitor 인스턴스
-    last_battery_percent: int = -1   # 마지막 표시한 배터리 %
+    battery_monitor: Any = None
+    last_battery_percent: int = -1
 
     # weather display
     last_displayed_weather: Any = None
@@ -58,3 +58,11 @@ class AppState:
 
     # mpv socket path
     mpv_sock: str = "/tmp/wr_mpv.sock"
+
+    # ── Bluetooth ──────────────────────────────────────────
+    # 현재 출력 모드: "speaker" | "bluetooth"
+    output_mode: str = "speaker"
+    # 연결된 BT 장치 MAC (연결 중일 때만 값 있음)
+    bt_mac: str = ""
+    # PulseAudio BT sink 이름 (연결 중일 때만 값 있음)
+    bt_sink: str = ""
