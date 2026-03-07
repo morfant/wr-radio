@@ -55,13 +55,53 @@ def is_powered() -> bool:
     return "Powered: yes" in _bt("show")
 
 
-def get_paired_devices() -> list[tuple[str, str]]:
-    """페어링된 장치 목록 [(MAC, 이름), ...]"""
-    devices = []
-    for line in _bt("devices").splitlines():
+def _is_mac_like(s: str) -> bool:
+    """문자열이 MAC 주소 형태인지 (콜론/하이픈 모두)"""
+    return bool(
+        re.match(r"^[0-9A-Fa-f:]{17}$", s) or
+        re.match(r"^[0-9A-Fa-f]{2}(-[0-9A-Fa-f]{2}){5}$", s)
+    )
+
+
+def get_paired_devices() -> list:
+    """
+    실제 페어링된 장치만 반환 [(MAC, 이름), ...]
+    1) bluetoothctl devices Paired 시도
+    2) 빈 경우 → devices 전체 목록에서 info로 Paired: yes 확인
+    """
+    # 1) Paired 필터 (BlueZ 5.55+)
+    out = _bt("devices Paired")
+    pairs = []
+    for line in out.splitlines():
         m = re.match(r"Device ([0-9A-Fa-f:]{17})\s+(.+)", line)
         if m:
-            devices.append((m.group(1), m.group(2).strip()))
+            pairs.append((m.group(1), m.group(2).strip()))
+
+    if pairs:
+        return [(mac, name) for mac, name in pairs if not _is_mac_like(name)]
+
+    # 2) 구버전 fallback: 모든 캐시 장치에서 info로 검증
+    out = _bt("devices")
+    macs = []
+    for line in out.splitlines():
+        m = re.match(r"Device ([0-9A-Fa-f:]{17})", line)
+        if m:
+            macs.append(m.group(1))
+
+    devices = []
+    for mac in macs:
+        info = _bt(f"info {mac}", timeout=4)
+        if "Paired: yes" not in info:
+            continue
+        name = ""
+        for line in info.splitlines():
+            nm = re.search(r"^\s*Name:\s+(.+)", line)
+            if nm:
+                name = nm.group(1).strip()
+                break
+        if name and not _is_mac_like(name):
+            devices.append((mac, name))
+
     return devices
 
 
@@ -110,7 +150,7 @@ def find_bt_sink(retries: int = 6, wait: float = 1.0) -> str | None:
     return None
 
 
-def get_current_bt_sink() -> str | None:
+def get_current_bt_sink() -> str:
     """재시도 없이 현재 등록된 BT sink 반환 (빠른 조회용)"""
     out = _pactl(["list", "short", "sinks"])
     for line in out.splitlines():
@@ -119,3 +159,168 @@ def get_current_bt_sink() -> str | None:
             if len(parts) >= 2:
                 return parts[1]
     return None
+
+
+def pair(mac: str) -> bool:
+    """페어링 (NoInputNoOutput — PIN 없이 자동 승인)"""
+    _bt("agent NoInputNoOutput")
+    _bt("default-agent")
+    out = _bt(f"pair {mac}", timeout=20)
+    if "Failed" in out and "already" not in out.lower():
+        log.warning(f"페어링 실패: {out[:80]}")
+        return False
+    _bt(f"trust {mac}")
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scanner
+# ─────────────────────────────────────────────────────────────────────────────
+
+import threading
+
+
+class Scanner:
+    """
+    백그라운드 BT 스캔.
+    - 페어링된 장치는 start() 시 즉시 채움
+    - [NEW] / [CHG] 라인 처리
+    - 이름 없는 장치(MAC 형태 포함)는 제외
+    - 이름 조회(bluetoothctl info)는 별도 스레드 — 스캔 루프 블로킹 없음
+    """
+
+    def __init__(self):
+        self._devices: dict = {}      # {mac: (name, is_paired)}
+        self._proc    = None
+        self._thread  = None
+        self._running = False
+        self._lock    = threading.Lock()
+        self._paired_macs: set = set()
+        self._pending: set = set()    # info 조회 중인 MAC
+
+    def start(self):
+        self._running = True
+        for mac, name in get_paired_devices():
+            self._paired_macs.add(mac)
+            with self._lock:
+                self._devices[mac] = (name, True)
+
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _add(self, mac: str, name: str):
+        """검증 후 목록에 추가"""
+        name = name.strip()
+        if not name or _is_mac_like(name):
+            return
+        is_paired = mac in self._paired_macs
+        with self._lock:
+            if mac in self._devices:
+                return   # 이미 있으면 무시
+            self._devices[mac] = (name, is_paired)
+        tag = "페어링됨" if is_paired else "새 장치"
+        print(f"🔵 BT [{tag}] {name}  ({mac})")
+
+    def _lookup_async(self, mac: str):
+        """bluetoothctl info 로 이름 조회 — 별도 스레드"""
+        with self._lock:
+            if mac in self._pending or mac in self._devices:
+                return
+            self._pending.add(mac)
+
+        def _work():
+            try:
+                out = _bt(f"info {mac}", timeout=5)
+                name = ""
+                for line in out.splitlines():
+                    m = re.search(r"^\s*Name:\s+(.+)", line)
+                    if m:
+                        name = m.group(1).strip()
+                        break
+                print(f"[BT INFO] mac={mac}  name={repr(name)}")
+                if name and not _is_mac_like(name):
+                    self._add(mac, name)
+                else:
+                    print(f"[BT INFO] mac={mac} 이름 없음 또는 MAC형태 → 제외")
+            finally:
+                with self._lock:
+                    self._pending.discard(mac)
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def _run(self):
+        try:
+            subprocess.run(
+                ["bluetoothctl", "set-scan-filter-rssi", "-80"],
+                capture_output=True, timeout=3
+            )
+            self._proc = subprocess.Popen(
+                ["bluetoothctl", "--timeout", "60", "scan", "on"],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+            )
+            print("🔵 스캔 프로세스 시작")
+            # ANSI 색상 코드 제거용 패턴
+            ansi_escape = re.compile(r'\x1b\[[0-9;]*m')
+            for line in self._proc.stdout:
+                line = line.rstrip()
+                clean = ansi_escape.sub('', line)   # ← ANSI 제거
+                print(f"[BT RAW] {repr(clean)}")
+                if not self._running:
+                    break
+
+                # [NEW] Device MAC Name
+                m = re.search(r"\[NEW\] Device ([0-9A-Fa-f:]{17})\s+(.+)", clean)
+                if m:
+                    mac, name = m.group(1), m.group(2).strip()
+                    print(f"[BT NEW] mac={mac}  name={repr(name)}")
+                    if _is_mac_like(name):
+                        self._lookup_async(mac)
+                    else:
+                        self._add(mac, name)
+                    continue
+
+                # [CHG] — 처음 보는 MAC
+                m = re.search(r"\[CHG\] Device ([0-9A-Fa-f:]{17})\s+", clean)
+                if m:
+                    mac = m.group(1)
+                    with self._lock:
+                        known = mac in self._devices or mac in self._pending
+                    if not known:
+                        print(f"[BT CHG unknown] mac={mac} → lookup")
+                        self._lookup_async(mac)
+
+            print("🔵 스캔 프로세스 종료")
+        except Exception as e:
+            print(f"[BT ERROR] 스캔 스레드 오류: {e}")
+        finally:
+            try:
+                subprocess.run(
+                    ["bluetoothctl", "set-scan-filter-clear"],
+                    capture_output=True, timeout=3
+                )
+            except Exception:
+                pass
+
+    def stop(self):
+        self._running = False
+        if self._proc:
+            try:
+                self._proc.terminate()
+                self._proc.wait(timeout=2)
+            except Exception:
+                pass
+            self._proc = None
+        # bluetoothctl scan off 는 호출하지 않음
+        # → BlueZ 장치 캐시가 지워져서 재진입 시 devices Paired 가 빈 값 반환되는 문제 방지
+
+    def has_pending(self) -> bool:
+        with self._lock:
+            return bool(self._pending)
+
+    def get_devices(self) -> list:
+        """[(MAC, 이름, 페어링여부), ...] — 페어링된 것 먼저"""
+        with self._lock:
+            paired = [(mac, n, True)  for mac, (n, p) in self._devices.items() if p]
+            new    = [(mac, n, False) for mac, (n, p) in self._devices.items() if not p]
+        return paired + new

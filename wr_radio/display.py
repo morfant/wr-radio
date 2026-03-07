@@ -216,6 +216,21 @@ def draw_bt_indicator(draw: ImageDraw.ImageDraw, connected: bool):
     draw.text((x + 7, y + 7), "B", font=font, fill=color, anchor="mm")
 
 
+def draw_bt_indicator(draw: ImageDraw.ImageDraw, connected: bool):
+    """배터리 아이콘 우측에 BT 아이콘. 연결 시에만 표시."""
+    if not connected:
+        return
+    x, y = 36, 4
+    color = (100, 160, 255)
+    # 원 + B
+    draw.ellipse([x, y, x + 13, y + 13], outline=color, width=1)
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 10)
+    except Exception:
+        font = ImageFont.load_default()
+    draw.text((x + 7, y + 7), "B", font=font, fill=color, anchor="mm")
+
+
 def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool = True):
     if percent <= 15 and not blink_on:
         return

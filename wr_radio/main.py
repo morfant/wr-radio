@@ -204,128 +204,272 @@ def do_shutdown(state: AppState, gpio_pins: dict):
     os.system("sudo halt")
 
 
-def _draw_bt_screen(state: AppState, gpio_pins: dict, title: str, lines: list[tuple[str, tuple]]):
-    """BT 관련 화면 공통 렌더링"""
-    img = Image.new("RGB", (240, 240), (0, 0, 0))
+def _show_bt_msg(state: AppState, gpio_pins: dict, msg: str, color: tuple):
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font_title = load_font(16, bold=True)
-    font_body  = load_font(13, bold=False)
-    draw.text((20, 18), title, fill=(100, 140, 255), font=font_title)
-    draw.line([(20, 40), (220, 40)], fill=(40, 40, 60), width=1)
-    for i, (text, color) in enumerate(lines):
-        draw.text((20, 58 + i * 24), text, fill=color, font=font_body)
-    display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
+    draw.text((20, 18), "Bluetooth", fill=(80, 80, 100), font=load_font(13))
+    draw.line([(20, 38), (220, 38)], fill=(40, 40, 50), width=1)
+    for i, line in enumerate(msg.split("\n")):
+        draw.text((120, 110 + i * 28), line, fill=color,
+                  font=load_font(15), anchor="mm")
+    display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]},
+                          state, img)
 
 
-def do_bluetooth(state: AppState, gpio_pins: dict):
-    """
-    블루투스 출력 전환.
-    - speaker 모드 → BT 연결 후 BT 모드로 전환
-    - bluetooth 모드 → 연결 해제 후 speaker 모드로 전환
-    """
-    pins_disp = {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}
+def _bt_connect(state: AppState, gpio_pins: dict,
+                mac: str, name: str, is_paired: bool) -> bool:
+    if state.bt_mac and state.bt_mac != mac:
+        bluetooth.disconnect(state.bt_mac)
+        state.bt_mac = state.bt_sink = ""
 
-    # ── 현재 BT 모드 → 스피커로 복귀 ──────────────────────
-    if state.output_mode == "bluetooth":
-        print("🔵 BT 해제 → 스피커 전환")
-        _draw_bt_screen(state, gpio_pins,
-            "Bluetooth",
-            [("Disconnecting...", (180, 180, 180))]
-        )
+    if not is_paired:
+        _show_bt_msg(state, gpio_pins, f"Pairing...\n{name[:20]}", (255, 200, 80))
+        if not bluetooth.pair(mac):
+            _show_bt_msg(state, gpio_pins, "Pairing failed", (200, 80, 80))
+            time.sleep(2.0)
+            return False
 
-        if state.bt_mac:
-            bluetooth.disconnect(state.bt_mac)
+    _show_bt_msg(state, gpio_pins, f"Connecting...\n{name[:20]}", (255, 200, 80))
+    if not bluetooth.connect(mac):
+        _show_bt_msg(state, gpio_pins, "Connect failed", (200, 80, 80))
+        time.sleep(2.0)
+        return False
 
-        state.output_mode = "speaker"
-        state.bt_mac = ""
-        state.bt_sink = ""
+    sink = bluetooth.find_bt_sink()
+    if not sink:
+        _show_bt_msg(state, gpio_pins, "Sink not found", (200, 80, 80))
+        bluetooth.disconnect(mac)
+        time.sleep(2.0)
+        return False
 
-        was_playing = state.is_playing
-        player.stop_playback(state)
-        player.restart_mpv(state)
-
-        if was_playing:
-            player.play_station(state, state.current_index)
-
-        _draw_bt_screen(state, gpio_pins,
-            "Bluetooth",
-            [("Disconnected", (100, 200, 100)),
-             ("Output: Speaker", (180, 180, 180))]
-        )
-        time.sleep(1.5)
-        return
-
-    # ── 스피커 모드 → BT 연결 시도 ────────────────────────
-    print("🔵 BT 연결 시도")
-
-    devices = bluetooth.get_paired_devices()
-    if not devices:
-        _draw_bt_screen(state, gpio_pins,
-            "Bluetooth",
-            [("No paired devices", (200, 80, 80)),
-             ("Pair via bluetoothctl", (100, 100, 120))]
-        )
-        time.sleep(2.5)
-        return
-
-    # 페어링된 장치 목록 표시
-    lines = [("Paired devices:", (120, 120, 140))]
-    for mac, name in devices[:4]:
-        lines.append((f"  {name[:22]}", (180, 180, 200)))
-    lines.append(("Connecting...", (255, 200, 80)))
-    _draw_bt_screen(state, gpio_pins, "Bluetooth", lines)
-
-    # 이미 연결된 sink가 있는지 먼저 확인
-    existing_sink = bluetooth.get_current_bt_sink()
-    if existing_sink:
-        mac, name = devices[0]
-        print(f"  기존 BT sink 재활용: {existing_sink}")
-        state.bt_sink = existing_sink
-        state.bt_mac = mac
-    else:
-        # 첫 번째 장치에 연결
-        mac, name = devices[0]
-        ok = bluetooth.connect(mac)
-        if not ok:
-            _draw_bt_screen(state, gpio_pins,
-                "Bluetooth",
-                [(f"Connect failed", (200, 80, 80)),
-                 (f"{name[:24]}", (120, 120, 140))]
-            )
-            time.sleep(2.5)
-            return
-
-        sink = bluetooth.find_bt_sink()
-        if not sink:
-            _draw_bt_screen(state, gpio_pins,
-                "Bluetooth",
-                [("Sink not found", (200, 80, 80)),
-                 ("Check PulseAudio", (120, 120, 140))]
-            )
-            bluetooth.disconnect(mac)
-            time.sleep(2.5)
-            return
-
-        state.bt_sink = sink
-        state.bt_mac = mac
-
-    # mpv 재시작 (BT sink로)
+    state.bt_mac = mac
+    state.bt_sink = sink
     state.output_mode = "bluetooth"
     was_playing = state.is_playing
     player.stop_playback(state)
     player.restart_mpv(state)
-
     if was_playing:
         player.play_station(state, state.current_index)
+    _show_bt_msg(state, gpio_pins, f"Connected\n{name[:20]}", (100, 200, 100))
+    time.sleep(1.5)
+    return True
 
-    mac, name = devices[0]
-    _draw_bt_screen(state, gpio_pins,
-        "Bluetooth",
-        [("Connected", (100, 200, 100)),
-         (f"{name[:24]}", (180, 180, 255)),
-         ("Output: Bluetooth", (180, 180, 180))]
-    )
-    time.sleep(2.0)
+
+def _bt_disconnect(state: AppState, gpio_pins: dict):
+    _show_bt_msg(state, gpio_pins, "Disconnecting...", (180, 180, 180))
+    bluetooth.disconnect(state.bt_mac)
+    state.output_mode = "speaker"
+    state.bt_mac = state.bt_sink = ""
+    was_playing = state.is_playing
+    player.stop_playback(state)
+    player.restart_mpv(state)
+    if was_playing:
+        player.play_station(state, state.current_index)
+    _show_bt_msg(state, gpio_pins, "Disconnected", (100, 200, 100))
+    time.sleep(1.2)
+
+
+def _draw_bt_list(state, devices, selected, scanning, scan_elapsed):
+    SCAN_DURATION = 15
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    ft   = load_font(13)
+    fi   = load_font(14)
+    fs   = load_font(11)
+
+    draw.text((20, 18),
+              "Bluetooth" + ("  Scanning..." if scanning else ""),
+              fill=(80, 80, 100), font=ft)
+    draw.line([(20, 38), (220, 38)], fill=(40, 40, 50), width=1)
+    if scanning:
+        bw = int(200 * min(scan_elapsed, SCAN_DURATION) / SCAN_DURATION)
+        draw.rectangle([(20, 34), (20 + bw, 37)], fill=(60, 100, 180))
+
+    scan_label = "  Scanning..." if scanning else "  Scan for devices"
+    specials   = [scan_label]
+    if state.bt_mac:
+        specials.append("  Disconnect")
+    specials.append("  Back")
+    all_items = devices + specials
+
+    item_h  = 36
+    start_y = 48
+    visible = 5
+    offset  = max(0, selected - visible + 1)
+
+    for slot, item in enumerate(all_items[offset: offset + visible]):
+        ridx = slot + offset
+        y    = start_y + slot * item_h
+        sel  = (ridx == selected)
+        if sel:
+            draw.rounded_rectangle([(16, y), (224, y + 28)],
+                                   radius=5, fill=(25, 25, 40))
+        if isinstance(item, tuple):
+            mac, name, paired = item
+            conn  = (mac == state.bt_mac)
+            dot   = (100, 160, 255) if conn else (70, 70, 90) if paired else (50, 50, 50)
+            draw.ellipse([22, y+9, 30, y+17], fill=dot)
+            nc = (230, 230, 255) if sel else (160, 160, 200)
+            draw.text((36, y+5), name[:22], fill=nc, font=fi)
+            if not paired:
+                draw.text((198, y+5), "New", fill=(100, 200, 100), font=fs)
+        else:
+            if "Disconnect" in item:
+                c = (255, 120, 120) if sel else (180, 80, 80)
+            elif "Scan" in item:
+                c = (200, 200, 100) if sel else (120, 120, 60)
+            else:
+                c = (180, 180, 200) if sel else (100, 100, 120)
+            draw.text((20, y+5), item, fill=c, font=fi)
+
+    total = len(all_items)
+    if total > visible:
+        bh  = max(10, int(190 * visible / total))
+        by  = 48 + int(190 * offset / total)
+        draw.rectangle([(235, 48), (237, 238)], fill=(30, 30, 30))
+        draw.rectangle([(235, by), (237, by + bh)], fill=(80, 80, 100))
+
+    return img
+
+
+def do_bluetooth(state: AppState, gpio_pins: dict):
+    SCAN_DURATION  = 15    # 초
+    POST_SCAN_WAIT = 8     # 스캔 종료 후 이름 조회 대기 (초)
+    REFRESH_SEC    = 0.5
+    DEBOUNCE       = 0.02
+    pins_disp = {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}
+
+    scanner      = None
+    scanning     = False
+    scan_start   = 0.0
+    scan_ended   = 0.0    # 스캔 종료 시각 (0=종료 안 됨)
+    selected     = 0
+    last_refresh = 0.0
+
+    devices = [(mac, name, True)
+               for mac, name in bluetooth.get_paired_devices()]
+
+    if state.bt_mac:
+        for i, (mac, _, _) in enumerate(devices):
+            if mac == state.bt_mac:
+                selected = i
+                break
+
+    def specials():
+        s = ["  Scanning..." if scanning else "  Scan for devices"]
+        if state.bt_mac:
+            s.append("  Disconnect")
+        s.append("  Back")
+        return s
+
+    def all_items():
+        return devices + specials()
+
+    def render():
+        el  = (time.time() - scan_start) if scanning else 0
+        img = _draw_bt_list(state, devices, selected, scanning, el)
+        display.display_image(GPIO, pins_disp, state, img)
+
+    render()
+
+    s1_last  = GPIO.input(gpio_pins["S1"])
+    key_last = GPIO.input(gpio_pins["KEY"])
+    last_rot = time.time()
+
+    try:
+        while True:
+            now = time.time()
+
+            # ── 스캔 중: 진행 바 + 실시간 목록 갱신 ───────
+            if scanning:
+                elapsed = now - scan_start
+                if elapsed >= SCAN_DURATION:
+                    # 스캔 종료: 최종 목록 한 번 더 render 후 grace period 진입
+                    scanner.stop()
+                    scanning   = False
+                    scan_ended = now
+                    devices[:] = scanner.get_devices()
+                    render()                    # ← 즉시 렌더 (last_refresh 갱신 안 함)
+                elif (now - last_refresh) >= REFRESH_SEC:
+                    devices[:] = scanner.get_devices()
+                    render()
+                    last_refresh = now
+
+            # ── grace period: 비동기 이름 조회 완료 대기 ───
+            elif scan_ended and scanner:
+                if (now - last_refresh) >= REFRESH_SEC:
+                    devices[:] = scanner.get_devices()
+                    render()
+                    last_refresh = now
+                if not scanner.has_pending() or (now - scan_ended) >= POST_SCAN_WAIT:
+                    # 종료 직전 마지막 render
+                    devices[:] = scanner.get_devices()
+                    render()
+                    scanner    = None
+                    scan_ended = 0.0
+
+            # ── 로터리 ─────────────────────────────────────
+            s1 = GPIO.input(gpio_pins["S1"])
+            s2 = GPIO.input(gpio_pins["S2"])
+            if s1 == 0 and s1_last == 1 and (now - last_rot) > DEBOUNCE:
+                direction = -1 if s2 == 1 else 1
+                selected  = (selected + direction) % len(all_items())
+                last_rot  = now
+                render()
+            s1_last = s1
+
+            # ── 버튼 ───────────────────────────────────────
+            key = GPIO.input(gpio_pins["KEY"])
+            if key == 1 and key_last == 0:
+                items = all_items()
+                item  = items[selected]
+
+                if isinstance(item, tuple):
+                    mac, name, is_paired = item
+                    if scanner:
+                        scanner.stop()
+                        scanning = False
+                        scanner  = None
+                    if mac == state.bt_mac:
+                        _bt_disconnect(state, gpio_pins)
+                    else:
+                        _bt_connect(state, gpio_pins, mac, name, is_paired)
+                    break
+
+                elif "Scan" in item and not scanning:
+                    # BT 연결 중이면 오디오 끊김 경고
+                    if state.output_mode == "bluetooth":
+                        _show_bt_msg(state, gpio_pins,
+                            "Scanning may cause\naudio interruption",
+                            (255, 200, 80))
+                        time.sleep(2.0)
+                    if scanner:
+                        scanner.stop()
+                    scanner    = bluetooth.Scanner()
+                    scanning   = True
+                    scan_start = now
+                    scan_ended = 0.0
+                    last_refresh = 0.0
+                    scanner.start()
+                    print("🔵 BT 스캔 시작")
+
+                elif "Disconnect" in item:
+                    if scanner:
+                        scanner.stop()
+                        scanning = False
+                        scanner  = None
+                    _bt_disconnect(state, gpio_pins)
+                    break
+
+                elif "Back" in item:
+                    break
+
+            key_last = key
+            time.sleep(0.005)
+
+    finally:
+        if scanner:
+            scanner.stop()
 
 
 def main():
