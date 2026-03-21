@@ -177,8 +177,10 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
             draw.line([x, yp, x + 18, yp], fill=(150, 150, 150), width=1)
 
 
-def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
-    if percent <= 15:
+def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int, charging: bool = False):
+    if charging:
+        outline_color = (100, 220, 100)
+    elif percent <= 15:
         outline_color = (255, 50, 50)
     elif percent >= 80:
         outline_color = (100, 200, 100)
@@ -189,7 +191,9 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
 
     fill_width = max(0, int(22 * percent / 100))
     if fill_width > 0:
-        if percent <= 15:
+        if charging:
+            fill_color = (100, 220, 100)
+        elif percent <= 15:
             fill_color = (255, 50, 50)
         elif percent <= 30:
             fill_color = (255, 180, 50)
@@ -198,6 +202,11 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int):
         else:
             fill_color = (200, 200, 200)
         draw.rectangle([x + 1, y + 3, x + fill_width, y + 11], fill=fill_color)
+
+    if charging:
+        # lightning bolt
+        bolt = [(x+13, y+1), (x+10, y+7), (x+13, y+7), (x+11, y+13), (x+16, y+6), (x+13, y+6), (x+15, y+1)]
+        draw.polygon(bolt, fill=(255, 220, 50))
 
 
 def draw_bt_indicator(draw: ImageDraw.ImageDraw, connected: bool):
@@ -231,10 +240,10 @@ def draw_bt_indicator(draw: ImageDraw.ImageDraw, connected: bool):
     draw.text((x + 7, y + 7), "B", font=font, fill=color, anchor="mm")
 
 
-def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool = True):
-    if percent <= 15 and not blink_on:
+def draw_battery_status(draw: ImageDraw.ImageDraw, percent: int, blink_on: bool = True, charging: bool = False):
+    if percent <= 15 and not blink_on and not charging:
         return
-    draw_battery_icon(draw, 4, 4, percent)
+    draw_battery_icon(draw, 4, 4, percent, charging=charging)
 
 
 def draw_sine_wave_animation(draw: ImageDraw.ImageDraw, frame: int, volume: int = 100):
@@ -300,15 +309,20 @@ def display_battery_only(GPIO, pins, state):
     voltage, percent = state.battery_monitor.get_status()
     blink_on = state.battery_monitor.is_blink_on()
 
-    if not state.battery_monitor.is_low and percent == state.last_battery_percent:
+    charging = state.battery_monitor.is_charging
+    last_charging = getattr(state, '_last_displayed_charging', None)
+    if (not state.battery_monitor.is_low
+        and percent == state.last_battery_percent
+        and charging == last_charging):
         return
 
     image = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(image)
-    draw_battery_status(draw, percent, blink_on)
+    draw_battery_status(draw, percent, blink_on, charging=state.battery_monitor.is_charging)
     display_image_region(GPIO, pins, state, image, 0, 0, 35, 18)
 
     state.last_battery_percent = percent
+    state._last_displayed_charging = charging
 
 
 def _draw_button_hint(draw: ImageDraw.ImageDraw):
@@ -409,7 +423,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
         # 배터리 + BT 상태 (상단)
         if state.battery_monitor is not None:
             voltage, percent = state.battery_monitor.get_status()
-            draw_battery_status(draw, percent, state.battery_monitor.is_blink_on())
+            draw_battery_status(draw, percent, state.battery_monitor.is_blink_on(), charging=state.battery_monitor.is_charging)
             state.last_battery_percent = percent
 
         bt_connected = getattr(state, "output_mode", "speaker") == "bluetooth"

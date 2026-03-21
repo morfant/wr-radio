@@ -17,9 +17,11 @@ VOLTAGE_TABLE = [
 ]
 
 SAMPLE_INTERVAL_SEC = 10
+VBUS_CHECK_INTERVAL_SEC = 2
 STABLE_WAIT_SEC = 20
 LOW_BATTERY_PCT = 15
 BLINK_PERIOD_SEC = 2.0
+VBUS_THRESHOLD = 4.0  # VBUS 분압값이 이 이상이면 충전 중
 
 
 def voltage_to_percent(voltage: float) -> int:
@@ -41,10 +43,12 @@ class BatteryMonitor:
     def __init__(self):
         self.voltage: float = 0.0
         self.percent: int = 0
+        self.is_charging: bool = False
         self._lock = threading.Lock()
         self._running = False
         self._ads = None
-        self._chan = None
+        self._chan_bat = None   # A0: 배터리
+        self._chan_vbus = None  # A1: USB VBUS
         self._stable_after: float = 0.0
 
     def init_adc(self) -> bool:
@@ -55,20 +59,22 @@ class BatteryMonitor:
             from adafruit_ads1x15.analog_in import AnalogIn
             i2c = busio.I2C(board.SCL, board.SDA)
             self._ads = ADS1115(i2c)
-            self._chan = AnalogIn(self._ads, 0)
+            self._chan_bat = AnalogIn(self._ads, 0)
+            self._chan_vbus = AnalogIn(self._ads, 1)
 
             # 첫 번째 읽기는 버림 (채널 안정화 전 값)
             try:
-                self._chan.voltage
+                self._chan_bat.voltage
+                self._chan_vbus.voltage
             except Exception:
                 pass
             time.sleep(0.2)
 
-            # 이후 10번 읽어서 평균
+            # 배터리 초기값: 10번 평균
             samples = []
             for _ in range(10):
                 try:
-                    samples.append(self._chan.voltage)
+                    samples.append(self._chan_bat.voltage)
                 except Exception:
                     pass
                 time.sleep(0.05)
@@ -76,7 +82,12 @@ class BatteryMonitor:
             self.voltage = raw * 2
             self.percent = voltage_to_percent(self.voltage)
 
-            print(f"🔋 배터리 초기화: {self.voltage:.3f}V ({self.percent}%)")
+            # VBUS 초기값
+            vbus = self._read_vbus()
+            self.is_charging = vbus is not None and vbus >= VBUS_THRESHOLD
+
+            charging_str = "충전 중" if self.is_charging else "배터리"
+            print(f"🔋 배터리 초기화: {self.voltage:.3f}V ({self.percent}%) [{charging_str}]")
             return True
         except Exception as e:
             print(f"❌ ADS1115 초기화 실패: {e}")
@@ -84,12 +95,21 @@ class BatteryMonitor:
 
     def _read_voltage(self) -> Optional[float]:
         try:
-            if self._chan is None:
+            if self._chan_bat is None:
                 return None
-            raw = self._chan.voltage
+            raw = self._chan_bat.voltage
             return raw * 2
         except Exception as e:
             print(f"⚠️  배터리 읽기 실패: {e}")
+            return None
+
+    def _read_vbus(self) -> Optional[float]:
+        try:
+            if self._chan_vbus is None:
+                return None
+            raw = self._chan_vbus.voltage
+            return raw * 2
+        except Exception as e:
             return None
 
     def pause_sampling(self):
@@ -100,14 +120,28 @@ class BatteryMonitor:
         return time.time() >= self._stable_after
 
     def _monitor_loop(self):
+        last_bat_check = 0.0
         while self._running:
+            now = time.time()
             if self._is_stable():
-                v = self._read_voltage()
-                if v is not None:
-                    with self._lock:
-                        self.voltage = v
-                        self.percent = voltage_to_percent(v)
-            time.sleep(SAMPLE_INTERVAL_SEC)
+                # VBUS 충전 여부: 2초마다
+                vbus = self._read_vbus()
+                with self._lock:
+                    was_charging = self.is_charging
+                    self.is_charging = vbus is not None and vbus >= VBUS_THRESHOLD
+                    if self.is_charging != was_charging:
+                        status = "충전 시작" if self.is_charging else "충전 해제"
+                        print(f"🔋 {status} (VBUS: {vbus:.2f}V)")
+
+                # 배터리 전압: 10초마다
+                if (now - last_bat_check) >= SAMPLE_INTERVAL_SEC:
+                    last_bat_check = now
+                    v = self._read_voltage()
+                    if v is not None:
+                        with self._lock:
+                            self.voltage = v
+                            self.percent = voltage_to_percent(v)
+            time.sleep(VBUS_CHECK_INTERVAL_SEC)
 
     def start(self) -> bool:
         if not self.init_adc():
