@@ -195,6 +195,15 @@ def do_shutdown(state: AppState, gpio_pins: dict):
     except Exception:
         pass
 
+    # BT 연결 해제
+    if state.bt_mac:
+        try:
+            bluetooth.disconnect(state.bt_mac)
+            state.bt_mac  = ""
+            state.bt_sink = ""
+        except Exception:
+            pass
+
     try:
         img = Image.new("RGB", (240, 240), (0, 0, 0))
         display.display_image(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, img)
@@ -218,21 +227,22 @@ def _show_bt_msg(state: AppState, gpio_pins: dict, msg: str, color: tuple):
 
 def _bt_connect(state: AppState, gpio_pins: dict,
                 mac: str, name: str, is_paired: bool) -> bool:
-    if state.bt_mac and state.bt_mac != mac:
-        bluetooth.disconnect(state.bt_mac)
-        state.bt_mac = state.bt_sink = ""
+    # 기존 연결 정보 저장 (실패 시 복구용)
+    prev_mac  = state.bt_mac  if state.bt_mac != mac else ""
 
     if not is_paired:
         _show_bt_msg(state, gpio_pins, f"Pairing...\n{name[:20]}", (255, 200, 80))
         if not bluetooth.pair(mac):
             _show_bt_msg(state, gpio_pins, "Pairing failed", (200, 80, 80))
             time.sleep(2.0)
+            _bt_ensure_output(state, gpio_pins, prev_mac)
             return False
 
     _show_bt_msg(state, gpio_pins, f"Connecting...\n{name[:20]}", (255, 200, 80))
     if not bluetooth.connect(mac):
         _show_bt_msg(state, gpio_pins, "Connect failed", (200, 80, 80))
         time.sleep(2.0)
+        _bt_ensure_output(state, gpio_pins, prev_mac)
         return False
 
     sink = bluetooth.find_bt_sink()
@@ -240,10 +250,23 @@ def _bt_connect(state: AppState, gpio_pins: dict,
         _show_bt_msg(state, gpio_pins, "Sink not found", (200, 80, 80))
         bluetooth.disconnect(mac)
         time.sleep(2.0)
+        _bt_ensure_output(state, gpio_pins, prev_mac)
         return False
 
-    state.bt_mac = mac
-    state.bt_sink = sink
+    # 성공 → 기존 연결 해제 후 sink 재확인
+    if prev_mac:
+        bluetooth.disconnect(prev_mac)
+        time.sleep(0.5)
+        # 기존 sink가 사라졌으니 새 sink 다시 탐색
+        sink = bluetooth.find_bt_sink(retries=4, wait=0.5)
+        if not sink:
+            _show_bt_msg(state, gpio_pins, "Sink lost", (200, 80, 80))
+            time.sleep(2.0)
+            _bt_ensure_output(state, gpio_pins, "")
+            return False
+
+    state.bt_mac      = mac
+    state.bt_sink     = sink
     state.output_mode = "bluetooth"
     was_playing = state.is_playing
     player.stop_playback(state)
@@ -253,6 +276,34 @@ def _bt_connect(state: AppState, gpio_pins: dict,
     _show_bt_msg(state, gpio_pins, f"Connected\n{name[:20]}", (100, 200, 100))
     time.sleep(1.5)
     return True
+
+
+def _bt_ensure_output(state: AppState, gpio_pins: dict, prev_mac: str):
+    """
+    연결 실패 후 출력 복구.
+    - 이전 BT 장치가 살아있으면 그대로 유지
+    - 아니면 스피커로 fallback
+    """
+    was_playing = state.is_playing
+
+    # 이전 BT 장치 확인
+    if prev_mac and bluetooth.is_device_connected(prev_mac):
+        sink = bluetooth.get_current_bt_sink()
+        if sink:
+            # 기존 BT 연결 정상 → 유지
+            state.bt_mac      = prev_mac
+            state.bt_sink     = sink
+            state.output_mode = "bluetooth"
+            return
+
+    # 이전 연결도 없음 → 스피커 fallback
+    state.output_mode = "speaker"
+    state.bt_mac      = ""
+    state.bt_sink     = ""
+    player.stop_playback(state)
+    player.restart_mpv(state)
+    if was_playing:
+        player.play_station(state, state.current_index)
 
 
 def _bt_disconnect(state: AppState, gpio_pins: dict):
@@ -301,20 +352,29 @@ def _draw_bt_list(state, devices, selected, scanning, scan_elapsed):
         ridx = slot + offset
         y    = start_y + slot * item_h
         sel  = (ridx == selected)
-        if sel:
+        if sel and not scanning:
             draw.rounded_rectangle([(16, y), (224, y + 28)],
                                    radius=5, fill=(25, 25, 40))
         if isinstance(item, tuple):
             mac, name, paired = item
             conn  = (mac == state.bt_mac)
             dot   = (100, 160, 255) if conn else (70, 70, 90) if paired else (50, 50, 50)
+            if scanning:
+                dot = tuple(c // 3 for c in dot)
             draw.ellipse([22, y+9, 30, y+17], fill=dot)
-            nc = (230, 230, 255) if sel else (160, 160, 200)
+            if scanning:
+                nc = (60, 60, 70)
+            elif sel:
+                nc = (230, 230, 255)
+            else:
+                nc = (160, 160, 200)
             draw.text((36, y+5), name[:22], fill=nc, font=fi)
-            if not paired:
+            if not paired and not scanning:
                 draw.text((198, y+5), "New", fill=(100, 200, 100), font=fs)
         else:
-            if "Disconnect" in item:
+            if scanning:
+                c = (50, 50, 50)   # 스캔 중 특수 항목도 dim
+            elif "Disconnect" in item:
                 c = (255, 120, 120) if sel else (180, 80, 80)
             elif "Scan" in item:
                 c = (200, 200, 100) if sel else (120, 120, 60)
@@ -345,6 +405,7 @@ def do_bluetooth(state: AppState, gpio_pins: dict):
     scan_ended   = 0.0    # 스캔 종료 시각 (0=종료 안 됨)
     selected     = 0
     last_refresh = 0.0
+    scan_was_playing = False  # 스캔 시작 전 재생 상태
 
     devices = [(mac, name, True)
                for mac, name in bluetooth.get_paired_devices()]
@@ -380,33 +441,39 @@ def do_bluetooth(state: AppState, gpio_pins: dict):
         while True:
             now = time.time()
 
-            # ── 스캔 중: 진행 바 + 실시간 목록 갱신 ───────
+            # ── 스캔 중: 진행 바만 갱신, 입력 무시 ────────
             if scanning:
                 elapsed = now - scan_start
                 if elapsed >= SCAN_DURATION:
-                    # 스캔 종료: 최종 목록 한 번 더 render 후 grace period 진입
                     scanner.stop()
                     scanning   = False
                     scan_ended = now
                     devices[:] = scanner.get_devices()
-                    render()                    # ← 즉시 렌더 (last_refresh 갱신 안 함)
+                    render()
                 elif (now - last_refresh) >= REFRESH_SEC:
                     devices[:] = scanner.get_devices()
                     render()
                     last_refresh = now
+                # 입력 상태만 읽어서 버림 (눌림 누적 방지)
+                s1_last  = GPIO.input(gpio_pins["S1"])
+                key_last = GPIO.input(gpio_pins["KEY"])
+                time.sleep(0.05)
+                continue
 
-            # ── grace period: 비동기 이름 조회 완료 대기 ───
+            # ── grace period: 이름 조회 완료 대기 ──────────
             elif scan_ended and scanner:
                 if (now - last_refresh) >= REFRESH_SEC:
                     devices[:] = scanner.get_devices()
                     render()
                     last_refresh = now
                 if not scanner.has_pending() or (now - scan_ended) >= POST_SCAN_WAIT:
-                    # 종료 직전 마지막 render
                     devices[:] = scanner.get_devices()
                     render()
                     scanner    = None
                     scan_ended = 0.0
+                    if scan_was_playing:
+                        player.play_station(state, state.current_index)
+                        scan_was_playing = False
 
             # ── 로터리 ─────────────────────────────────────
             s1 = GPIO.input(gpio_pins["S1"])
@@ -437,18 +504,16 @@ def do_bluetooth(state: AppState, gpio_pins: dict):
                     break
 
                 elif "Scan" in item and not scanning:
-                    # BT 연결 중이면 오디오 끊김 경고
-                    if state.output_mode == "bluetooth":
-                        _show_bt_msg(state, gpio_pins,
-                            "Scanning may cause\naudio interruption",
-                            (255, 200, 80))
-                        time.sleep(2.0)
                     if scanner:
                         scanner.stop()
-                    scanner    = bluetooth.Scanner()
-                    scanning   = True
-                    scan_start = now
-                    scan_ended = 0.0
+                    # 스캔 중 오디오 정지 (BT 간섭 방지)
+                    scan_was_playing = state.is_playing
+                    if scan_was_playing:
+                        player.stop_playback(state)
+                    scanner      = bluetooth.Scanner()
+                    scanning     = True
+                    scan_start   = now
+                    scan_ended   = 0.0
                     last_refresh = 0.0
                     scanner.start()
                     print("🔵 BT 스캔 시작")
@@ -538,10 +603,19 @@ def main():
         print(f"백라이트 초기화 실패: {e}")
         state.pwm_backlight = None
 
-    # clear screen
-    clear_image = Image.new("RGB", (240, 240), (0, 0, 0))
-    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, clear_image)
-    print("화면 클리어 완료")
+    # splash screen
+    splash_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'splash.png')
+    try:
+        splash_img = Image.open(splash_path).convert('RGB')
+        splash_canvas = Image.new('RGB', (240, 240), (0, 0, 0))
+        y_offset = (240 - splash_img.height) // 2
+        splash_canvas.paste(splash_img, (0, y_offset))
+        display.display_image(GPIO, {'CS': PIN_CS, 'DC': PIN_DC}, state, splash_canvas)
+        print('스플래시 화면 표시')
+    except Exception as e:
+        print(f'스플래시 로드 실패: {e}')
+        clear_image = Image.new('RGB', (240, 240), (0, 0, 0))
+        display.display_image(GPIO, {'CS': PIN_CS, 'DC': PIN_DC}, state, clear_image)
 
     # mpv init
     if not player.ensure_mpv_running(state):
@@ -585,6 +659,7 @@ def main():
         print("⚠️  배터리 모니터 없이 진행")
         state.battery_monitor = None
 
+    display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, Image.new("RGB", (240, 240), (0, 0, 0)))
     wd = weather.get_cached_weather(state, state.radio_stations[state.current_index]["lat"], state.radio_stations[state.current_index]["lon"])
     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
 
@@ -806,7 +881,7 @@ def main():
 
             # 배터리 업데이트 (normal 모드에서만)
             if state.current_mode == "normal" and state.battery_monitor is not None:
-                bat_interval = 1.0 if state.battery_monitor.is_low else 30.0
+                bat_interval = 1.0 if (state.battery_monitor.is_low or state.battery_monitor.is_charging != getattr(state, "_last_displayed_charging", None)) else 10.0
                 if (now - last_battery_update) >= bat_interval:
                     display.display_battery_only(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
                     last_battery_update = now
