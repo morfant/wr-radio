@@ -1,0 +1,18 @@
+[Unit]
+Description=WR-Radio Internet Radio
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wr-radio
+WorkingDirectory=/home/wr-radio/wr-radio
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 run.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
