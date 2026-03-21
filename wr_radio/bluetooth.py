@@ -94,13 +94,21 @@ def get_paired_devices() -> list:
         if "Paired: yes" not in info:
             continue
         name = ""
+        has_uuids = False
+        is_a2dp   = False
         for line in info.splitlines():
             nm = re.search(r"^\s*Name:\s+(.+)", line)
             if nm:
                 name = nm.group(1).strip()
-                break
-        if name and not _is_mac_like(name):
-            devices.append((mac, name))
+            if "UUID" in line:
+                has_uuids = True
+            if "110b" in line.lower():
+                is_a2dp = True
+        if not name or _is_mac_like(name):
+            continue
+        if has_uuids and not is_a2dp:
+            continue
+        devices.append((mac, name))
 
     return devices
 
@@ -232,16 +240,28 @@ class Scanner:
             try:
                 out = _bt(f"info {mac}", timeout=5)
                 name = ""
+                has_uuids = False
+                is_a2dp   = False
                 for line in out.splitlines():
                     m = re.search(r"^\s*Name:\s+(.+)", line)
                     if m:
                         name = m.group(1).strip()
-                        break
-                print(f"[BT INFO] mac={mac}  name={repr(name)}")
-                if name and not _is_mac_like(name):
-                    self._add(mac, name)
-                else:
+                    if "UUID" in line:
+                        has_uuids = True
+                    # A2DP Sink UUID: 0000110b (오디오 출력 장치)
+                    if "110b" in line.lower():
+                        is_a2dp = True
+
+                print(f"[BT INFO] mac={mac}  name={repr(name)}  a2dp={is_a2dp}  has_uuids={has_uuids}")
+
+                if not name or _is_mac_like(name):
                     print(f"[BT INFO] mac={mac} 이름 없음 또는 MAC형태 → 제외")
+                    return
+                # UUID 정보 있는데 A2DP Sink 없으면 오디오 출력 불가 장치 → 제외
+                if has_uuids and not is_a2dp:
+                    print(f"[BT INFO] mac={mac} ({name}) A2DP Sink 없음 → 제외")
+                    return
+                self._add(mac, name)
             finally:
                 with self._lock:
                     self._pending.discard(mac)
@@ -274,10 +294,8 @@ class Scanner:
                 if m:
                     mac, name = m.group(1), m.group(2).strip()
                     print(f"[BT NEW] mac={mac}  name={repr(name)}")
-                    if _is_mac_like(name):
-                        self._lookup_async(mac)
-                    else:
-                        self._add(mac, name)
+                    # 이름 있어도 _lookup_async로 UUID 확인
+                    self._lookup_async(mac)
                     continue
 
                 # [CHG] — 처음 보는 MAC

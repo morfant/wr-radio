@@ -80,6 +80,20 @@ def _get_core_idle(state) -> bool:
         return True
 
 
+def _is_bt_sink_alive(state) -> bool:
+    """현재 BT sink가 PulseAudio에 아직 등록되어 있는지 확인"""
+    if not state.bt_sink:
+        return False
+    try:
+        r = subprocess.run(
+            ["pactl", "list", "short", "sinks"],
+            capture_output=True, text=True, timeout=3
+        )
+        return state.bt_sink in r.stdout
+    except Exception:
+        return False
+
+
 def _audio_monitor_thread(state) -> None:
     last_hp = is_headphone_inserted()
     # BT 모드일 때는 앰프 끔
@@ -88,11 +102,31 @@ def _audio_monitor_thread(state) -> None:
     else:
         set_amp_power(not last_hp)
 
+    bt_check_interval = 3.0   # BT 연결 상태 체크 주기
+    last_bt_check = 0.0
+
     while not state.shutting_down:
+        now = time.time()
+
         # BT 모드에서는 헤드폰 감지 무시, 앰프 항상 OFF
         if state.output_mode == "bluetooth":
             set_amp_power(False)
             last_hp = is_headphone_inserted()
+
+            # 주기적으로 BT sink 살아있는지 확인
+            if (now - last_bt_check) >= bt_check_interval:
+                last_bt_check = now
+                if not _is_bt_sink_alive(state):
+                    print("🔵 BT 장치 연결 끊김 감지 → 스피커 전환")
+                    state.output_mode = "speaker"
+                    state.bt_mac      = ""
+                    state.bt_sink     = ""
+                    hp = is_headphone_inserted()
+                    set_amp_power(not hp)
+                    last_hp = hp
+                    restart_mpv(state)
+                    if state.is_playing:
+                        play_station(state, state.current_index)
         else:
             hp = is_headphone_inserted()
             if hp != last_hp:
