@@ -3,6 +3,7 @@
 
 from PIL import ImageDraw, ImageFont
 import os
+import signal
 import sys
 import time
 
@@ -617,7 +618,22 @@ def main():
         clear_image = Image.new('RGB', (240, 240), (0, 0, 0))
         display.display_image(GPIO, {'CS': PIN_CS, 'DC': PIN_DC}, state, clear_image)
 
-    # mpv init
+    # ── 시작 시 BT 상태 감지 (mpv 시작 전) ────────────────
+    devices = bluetooth.get_paired_devices()
+    connected_mac = next(
+        (mac for mac, _ in devices if bluetooth.is_device_connected(mac)), ""
+    )
+    if connected_mac:
+        existing_sink = bluetooth.find_bt_sink(retries=6, wait=1.0)
+        if existing_sink:
+            state.output_mode = "bluetooth"
+            state.bt_sink = existing_sink
+            state.bt_mac = connected_mac
+            print(f"🔵 BT 장치 감지됨: {connected_mac} → BT 모드로 시작")
+        else:
+            print(f"⚠️  BT 연결됨({connected_mac}) 하지만 sink 없음 → 스피커 모드")
+
+    # mpv init (BT 감지 결과에 따라 출력 장치 결정)
     if not player.ensure_mpv_running(state):
         print("mpv를 시작할 수 없어 종료합니다.")
         try:
@@ -632,22 +648,6 @@ def main():
         return
 
     player.set_volume(state, state.current_volume)
-
-    # ── 시작 시 BT 상태 감지 ──────────────────────────────
-    # 부팅 시 BT 장치가 이미 연결되어 있으면 BT 모드로 초기화
-    existing_sink = bluetooth.get_current_bt_sink()
-    if existing_sink:
-        devices = bluetooth.get_paired_devices()
-        connected_mac = next(
-            (mac for mac, _ in devices if bluetooth.is_device_connected(mac)), ""
-        )
-        if connected_mac:
-            state.output_mode = "bluetooth"
-            state.bt_sink = existing_sink
-            state.bt_mac = connected_mac
-            print(f"🔵 BT 장치 감지됨: {connected_mac} → BT 모드로 시작")
-            # mpv를 BT sink로 재시작
-            player.restart_mpv(state)
 
     player.start_audio_monitor(state)
     print("🎧 오디오 모니터 시작")
@@ -696,6 +696,12 @@ def main():
     print("모드에서 버튼: 일반 모드 복귀")
     print("Ctrl+C: 종료")
     print("=" * 50)
+
+    def _sigterm_handler(signum, frame):
+        print("\nSIGTERM 수신 → 종료 시작")
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     try:
         while True:

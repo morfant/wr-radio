@@ -118,6 +118,7 @@ def _audio_monitor_thread(state) -> None:
                 last_bt_check = now
                 if not _is_bt_sink_alive(state):
                     print("🔵 BT 장치 연결 끊김 감지 → 스피커 전환")
+                    state.last_displayed_index = -1  # LCD 강제 갱신
                     state.output_mode = "speaker"
                     state.bt_mac      = ""
                     state.bt_sink     = ""
