@@ -61,6 +61,7 @@ Weather requires an OpenWeatherMap API key set in `openweather_api_key`.
 - **`battery.py`** — Reads ADS1115 over I2C (A0 = battery voltage ×2 divider, A1 = VBUS ×2 divider). Sampling is paused 20s after station changes to let the voltage stabilize
 - **`weather.py`** — OpenWeatherMap API, 10-minute cache in `AppState.weather_cache`, fetches in daemon threads
 - **`input.py`** — Pure logic for rotary encoder (S1/S2 edge detection with debounce) and button (short press / long press distinction)
+- **`wifi.py`** — WiFi provisioning via `nmcli`. When WiFi is unavailable, starts a WPA2 hotspot ("WR-Radio Setup") and serves a stdlib `http.server` config page so the user enters home WiFi credentials from a browser. See "WiFi Provisioning" section below
 
 ### GPIO Pin Assignments (BCM)
 
@@ -91,6 +92,26 @@ normal ──(long press)───▶ system_menu ──(select Brightness)─�
 
 All modes time out after 3 seconds of inactivity (`InputConfig.mode_timeout_sec`).
 
+System menu items (`SYSTEM_MENU_ITEMS` in `main.py`): Brightness, Bluetooth, **WiFi Setup**, Power Off, Back. WiFi Setup calls the blocking `wifi.provision_wifi()` (re-provisioning after relocating to a new network).
+
+## WiFi Provisioning (wifi.py)
+
+`provision_wifi()` is a **blocking** function (not a main-loop mode) called from two places in `main.py`:
+1. **At boot** — after the splash, if `is_wifi_connected()` is false. If a saved WiFi profile exists, waits up to 20s for NetworkManager to connect (reboot race) showing `display_wifi_waiting()`; a new device (`has_saved_wifi()` false) skips the wait and provisions immediately.
+2. **From the system menu** — "WiFi Setup" item, to reconfigure WiFi.
+
+Flow: scan networks → start hotspot → serve HTTP form → user submits SSID+password → connect → on success return to normal radio; on failure show error and retry loop.
+
+Key details and the bugs they fix (all hard-won — do not regress):
+- **Hotspot**: `nmcli device wifi hotspot` (WPA2, SSID "WR-Radio Setup", password `wrradio1`). Open networks are blocked by modern macOS, so WPA2 is required. Pi IP = `10.42.0.1`.
+- **HTTP server runs as `wr-radio` (non-root)** so port 80 fails → falls back to `8080`. URL shown on LCD is `10.42.0.1:8080`.
+- **`server.server_close()` after `shutdown()`** — without it the socket stays bound and the retry loop crashes with "Address already in use", which systemd restarts into an infinite provisioning loop.
+- **Connect via explicit profile** (`nmcli connection add` with `wifi-sec.key-mgmt wpa-psk`), not `nmcli device wifi connect`. The latter needs the SSID in the scan cache, which is empty right after tearing down the hotspot → fails with "key-mgmt: property is missing".
+- **`_cleanup_hotspots()` deletes by AP mode, not name** — `nmcli device wifi hotspot` auto-names the connection "Hotspot", so name-based cleanup left profiles accumulating.
+- **Cancel**: holding the button 1.5s during provisioning cancels → tears down hotspot (NM auto-reconnects a saved profile) → returns to normal radio (the menu is the re-entry point, so a wrong password never bricks the device).
+
+**Debugging tip**: while provisioning, the Pi is in AP mode and unreachable from the home network. Provision from a **phone** (on the hotspot) so the dev machine stays on home WiFi. `journalctl -u wr-radio` persists across reboots — analyze failures after the Pi rejoins the network.
+
 ## Display Layout (display.py)
 
 ### 날씨 아이콘 + 온도
@@ -118,3 +139,14 @@ sudo systemctl restart wr-radio
 ```
 
 서비스 파일: `/etc/systemd/system/wr-radio.service`, `WorkingDirectory=/home/wr-radio/wr-radio/PI`
+
+### 신규 기기 셋업 필수 단계: nmcli sudoers 규칙
+
+WiFi 프로비저닝(`wifi.py`)은 `sudo nmcli`로 핫스팟을 만든다. 서비스는 `wr-radio` 사용자(비-root)로 실행되므로, 비밀번호 없이 `nmcli`를 쓸 수 있도록 sudoers 규칙이 **각 기기마다** 필요하다. 없으면 프로비저닝이 "Insufficient privileges"로 실패한다.
+
+```bash
+echo 'wr-radio ALL=(root) NOPASSWD: /usr/bin/nmcli' | sudo tee /etc/sudoers.d/wr-radio-nmcli
+sudo chmod 440 /etc/sudoers.d/wr-radio-nmcli
+```
+
+`nmcli` 하나만 허용해 권한 범위를 좁게 유지한다.
