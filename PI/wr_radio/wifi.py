@@ -17,11 +17,11 @@ _credentials = None   # (ssid, password) set by HTTP handler
 def is_wifi_connected() -> bool:
     try:
         r = subprocess.run(
-            ["nmcli", "-t", "-f", "TYPE,STATE", "connection", "show", "--active"],
+            ["nmcli", "-t", "-f", "TYPE,STATE", "device"],
             capture_output=True, text=True, timeout=5
         )
         return any(
-            line.startswith("wifi:") and "activated" in line
+            line.startswith("wifi:") and line.endswith(":connected")
             for line in r.stdout.splitlines()
         )
     except Exception:
@@ -45,28 +45,27 @@ def scan_networks() -> list:
         return []
 
 
+def _nmcli(*args, timeout=15) -> subprocess.CompletedProcess:
+    return subprocess.run(["sudo", "nmcli"] + list(args),
+                          capture_output=True, text=True, timeout=timeout)
+
+
 def _start_hotspot() -> bool:
-    subprocess.run(["nmcli", "connection", "delete", _HOTSPOT_CONN],
-                   capture_output=True, timeout=10)
-    r = subprocess.run(
-        ["nmcli", "connection", "add",
-         "type", "wifi", "ifname", "wlan0",
-         "con-name", _HOTSPOT_CONN,
-         "ssid", AP_SSID,
-         "802-11-wireless.mode", "ap",
-         "802-11-wireless.band", "bg",
-         "ipv4.method", "shared",
-         "wifi-sec.key-mgmt", "wpa-psk",
-         "wifi-sec.psk", AP_PASSWORD],
-        capture_output=True, text=True, timeout=10
-    )
+    _nmcli("connection", "delete", _HOTSPOT_CONN, timeout=10)
+    r = _nmcli("connection", "add",
+               "type", "wifi", "ifname", "wlan0",
+               "con-name", _HOTSPOT_CONN,
+               "ssid", AP_SSID,
+               "802-11-wireless.mode", "ap",
+               "802-11-wireless.band", "bg",
+               "ipv4.method", "shared",
+               "wifi-sec.key-mgmt", "wpa-psk",
+               "wifi-sec.psk", AP_PASSWORD,
+               timeout=10)
     if r.returncode != 0:
         print(f"핫스팟 생성 실패: {r.stderr.strip()}")
         return False
-    r2 = subprocess.run(
-        ["nmcli", "connection", "up", _HOTSPOT_CONN],
-        capture_output=True, text=True, timeout=15
-    )
+    r2 = _nmcli("connection", "up", _HOTSPOT_CONN, timeout=15)
     if r2.returncode != 0:
         print(f"핫스팟 시작 실패: {r2.stderr.strip()}")
         return False
@@ -74,18 +73,15 @@ def _start_hotspot() -> bool:
 
 
 def _stop_hotspot():
-    subprocess.run(["nmcli", "connection", "down", _HOTSPOT_CONN],
-                   capture_output=True, timeout=10)
-    subprocess.run(["nmcli", "connection", "delete", _HOTSPOT_CONN],
-                   capture_output=True, timeout=10)
+    _nmcli("connection", "down", _HOTSPOT_CONN, timeout=10)
+    _nmcli("connection", "delete", _HOTSPOT_CONN, timeout=10)
 
 
 def _connect_to_network(ssid: str, password: str) -> bool:
     if password:
-        cmd = ["nmcli", "device", "wifi", "connect", ssid, "password", password]
+        r = _nmcli("device", "wifi", "connect", ssid, "password", password, timeout=30)
     else:
-        cmd = ["nmcli", "device", "wifi", "connect", ssid]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        r = _nmcli("device", "wifi", "connect", ssid, timeout=30)
     return r.returncode == 0
 
 
