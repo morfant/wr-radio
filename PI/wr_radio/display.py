@@ -172,9 +172,11 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
             draw.line([xp, yp - 2, xp, yp + 2], fill=(255, 255, 255), width=1)
 
     elif icon_code == "50":
-        for i in range(5):
+        # (x_offset, width) — 길이와 위치를 들쑥날쑥하게 해서 안개 느낌
+        fog_lines = [(0, 14), (3, 18), (1, 12), (4, 16), (2, 10)]
+        for i, (ox, w) in enumerate(fog_lines):
             yp = y + i * 3
-            draw.line([x, yp, x + 18, yp], fill=(150, 150, 150), width=1)
+            draw.line([x + ox, yp, x + ox + w, yp], fill=(150, 150, 150), width=1)
 
 
 def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int, charging: bool = False):
