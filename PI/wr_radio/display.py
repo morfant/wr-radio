@@ -521,7 +521,7 @@ def display_provisioning_screen(GPIO, pins, state,
     draw.text((120, 120), f"PW: {ap_pw}",     font=font_reg,  fill=(180, 220, 180), anchor="mm")
     draw.text((120, 158), "Open browser:",    font=font_reg,  fill=(140, 140, 160), anchor="mm")
     draw.text((120, 183), ap_url,             font=font_bold, fill=(100, 200, 255), anchor="mm")
-    draw.text((120, 220), "Hold knob to cancel", font=font_reg, fill=(90, 90, 105), anchor="mm")
+    draw.text((120, 220), "Hold knob to cancel", font=font_reg, fill=(255, 180, 80), anchor="mm")
 
     display_image(GPIO, pins, state, img)
 
