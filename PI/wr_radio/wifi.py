@@ -82,17 +82,33 @@ def _stop_hotspot():
 
 
 def _connect_to_network(ssid: str, password: str) -> bool:
-    # 핫스팟 내린 직후 스캔 캐시가 비어 SSID를 못 찾을 수 있어 재시도
+    # 'device wifi connect'는 핫스팟 해체 직후 스캔 목록에서 SSID를 못 찾으면
+    # 보안 타입을 추론하지 못해 'key-mgmt: property is missing'으로 실패한다.
+    # 스캔에 의존하지 않도록 프로파일을 명시적으로 생성한 뒤 올린다.
+
+    # 동명의 기존 프로파일 제거 (충돌/잔여 설정 방지)
+    _nmcli("connection", "delete", ssid, timeout=10)
+
+    add_args = ["connection", "add", "type", "wifi",
+                "con-name", ssid, "ifname", "wlan0", "ssid", ssid]
+    if password:
+        add_args += ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password]
+
+    r = _nmcli(*add_args, timeout=15)
+    if r.returncode != 0:
+        print(f"프로파일 생성 실패: {r.stderr.strip()}")
+        return False
+
+    # AP 탐색/연결 — association이 느릴 수 있어 재시도
     for attempt in range(3):
-        _nmcli("device", "wifi", "rescan", timeout=15)
-        time.sleep(2)
-        if password:
-            r = _nmcli("device", "wifi", "connect", ssid, "password", password, timeout=30)
-        else:
-            r = _nmcli("device", "wifi", "connect", ssid, timeout=30)
-        if r.returncode == 0:
+        r2 = _nmcli("connection", "up", ssid, timeout=30)
+        if r2.returncode == 0:
             return True
-        print(f"연결 시도 {attempt + 1} 실패: {r.stderr.strip()}")
+        print(f"연결 시도 {attempt + 1} 실패: {r2.stderr.strip()}")
+        time.sleep(2)
+
+    # 실패한 프로파일은 정리 (다음 시도/부팅 자동연결 오염 방지)
+    _nmcli("connection", "delete", ssid, timeout=10)
     return False
 
 
