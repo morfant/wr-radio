@@ -31,6 +31,15 @@ python3 test/oled/oled_test.py         # display
 python3 test/bt/bt_test.py             # Bluetooth
 ```
 
+LCD 표시 테스트 스크립트 (`sudo` 필요, 실행 전 서비스 중지):
+```bash
+sudo systemctl stop wr-radio
+sudo python3 test/lcd/weather_icon_test.py     # 3×3 그리드로 전체 날씨 아이콘
+sudo python3 test/lcd/weather_layout_test.py   # 실제 레이아웃으로 5초 간격 순환
+```
+
+`sudo`로 실행 시 패키지 누락 오류가 나면: `sudo pip3 install <패키지> --break-system-packages`
+
 There is no test suite or linter configured — tests are hardware integration tests that require physical hardware.
 
 ## Configuration
@@ -47,7 +56,7 @@ Weather requires an OpenWeatherMap API key set in `openweather_api_key`.
 - **`main.py`** — Application entry point and main loop. Owns GPIO/SPI setup, UI mode state machine (normal → volume → system_menu → brightness), and coordinates all subsystems
 - **`config.py`** — Config file load/save. Hardcoded path. Also owns the timezone lookup table and `DEFAULT_STATIONS`
 - **`player.py`** — Manages an `mpv` subprocess controlled via Unix IPC socket (`/tmp/wr_mpv.sock`). Also handles headphone jack detection (GPIO 23) and PAM8403 amp power (GPIO 24). Spawns a background thread (`_audio_monitor_thread`) that monitors `core-idle` property and BT sink liveness
-- **`display.py`** — Raw ST7789 SPI driver (RGB565, no library). Uses PIL for rendering. Prefers `display_image_region()` over full `display_image()` to reduce SPI traffic. PIL weather icons are drawn programmatically (emoji font incompatibility workaround)
+- **`display.py`** — Raw ST7789 SPI driver (RGB565, no library). Uses PIL for rendering. Prefers `display_image_region()` over full `display_image()` to reduce SPI traffic. PIL weather icons are drawn programmatically (emoji font incompatibility workaround). `display_time_only()` 함수로 시간 영역(y=68 strip)만 1분마다 부분 갱신
 - **`bluetooth.py`** — Wraps `bluetoothctl` and `pactl` subprocesses. `Scanner` class runs scan in a background thread; name lookups via `bluetoothctl info` run in their own threads to avoid blocking the scan loop
 - **`battery.py`** — Reads ADS1115 over I2C (A0 = battery voltage ×2 divider, A1 = VBUS ×2 divider). Sampling is paused 20s after station changes to let the voltage stabilize
 - **`weather.py`** — OpenWeatherMap API, 10-minute cache in `AppState.weather_cache`, fetches in daemon threads
@@ -81,3 +90,31 @@ normal ──(long press)───▶ system_menu ──(select Brightness)─�
 ```
 
 All modes time out after 3 seconds of inactivity (`InputConfig.mode_timeout_sec`).
+
+## Display Layout (display.py)
+
+### 날씨 아이콘 + 온도
+- 위치: `icon_x=86`, `icon_y=location_y+43`, 온도 텍스트 `icon_x+30`
+- 아이콘 코드: `01` 맑음, `02` 구름조금, `03`/`04` 구름, `09` 이슬비(파란 점 3개), `10` 비(사선 4줄), `11` 천둥, `13` 눈, `50` 안개(파란 점 10개 산포)
+- 아이콘은 PIL로 직접 드로잉 (emoji 폰트 미지원으로 인한 대안)
+
+### 배터리 아이콘
+- 본체 20px + 팁 2px, 충전 중 번개 볼트는 외곽선 안(y+3~y+11)에 맞춤
+- 충전 상태 감지: VBUS(ADS1115 A1) ≥ 4.0V
+
+### 부분 갱신 영역
+- `y=0~18`: 배터리 + BT 인디케이터
+- `y=0~115`: 스테이션 정보 전체 (채널 변경 시)
+- `y=68~86`: 시간 텍스트만 (1분마다 `display_time_only()`)
+- `y=125~165`: 애니메이션 (재생 중 사인파, 로딩 중 점)
+- `y=168~239`: 스테이션 번호 + 버튼 힌트
+
+## Pi 연결 및 배포
+
+```bash
+ssh wr-radio@192.168.0.56
+cd ~/wr-radio && git pull
+sudo systemctl restart wr-radio
+```
+
+서비스 파일: `/etc/systemd/system/wr-radio.service`, `WorkingDirectory=/home/wr-radio/wr-radio/PI`
