@@ -152,17 +152,17 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
     elif icon_code == "04":
         # 작은 구름 두 개 나란히
         # 03과 같은 구름 모양 55% 크기로 두 개 나란히
-        for ox in (0, 12):
-            draw.ellipse([x+ox,   y+2, x+ox+7,  y+7], fill=(160, 160, 160))
-            draw.ellipse([x+ox+3, y,   x+ox+10, y+5], fill=(180, 180, 180))
-            draw.ellipse([x+ox+5, y+2, x+ox+12, y+7], fill=(200, 200, 200))
+        for ox in (0, 13):
+            draw.ellipse([x+ox,   y+3, x+ox+8,  y+10], fill=(160, 160, 160))
+            draw.ellipse([x+ox+2, y,   x+ox+9,  y+7 ], fill=(180, 180, 180))
+            draw.ellipse([x+ox+4, y+3, x+ox+12, y+10], fill=(200, 200, 200))
 
     elif icon_code == "09":
         draw.ellipse([x, y, x + 12, y + 8], fill=(120, 120, 120))
         draw.ellipse([x + 6, y - 2, x + 18, y + 6], fill=(140, 140, 140))
         # 점선 2줄 (이슬비)
         # 흩어진 점들 (이슬비)
-        for dx, dy in [(3, 10), (9, 11), (14, 10), (6, 14), (12, 13)]:
+        for dx, dy in [(4, 11), (10, 10), (15, 12)]:
             draw.ellipse([x+dx-1, y+dy-1, x+dx+1, y+dy+1], fill=(100, 150, 255))
 
     elif icon_code == "10":
@@ -191,7 +191,7 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
         # 안개: 구름보다 작은 원 5개가 살짝 겹치며 가로로 나열
         fog = (155, 155, 165)
         # 크기·위치가 조금씩 다른 원 5개
-        for ox, oy, d in [(0, 2, 7), (4, 0, 6), (8, 3, 9), (13, 1, 6), (17, 0, 8)]:
+        for ox, oy, d in [(0, 3, 5), (4, 0, 4), (8, 5, 5), (12, 1, 4), (16, 4, 5), (20, 0, 4)]:
             draw.ellipse([x+ox, y+oy, x+ox+d, y+oy+d], fill=fog)
 
 
