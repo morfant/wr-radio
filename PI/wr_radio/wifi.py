@@ -69,11 +69,18 @@ def _stop_hotspot():
 
 
 def _connect_to_network(ssid: str, password: str) -> bool:
-    if password:
-        r = _nmcli("device", "wifi", "connect", ssid, "password", password, timeout=30)
-    else:
-        r = _nmcli("device", "wifi", "connect", ssid, timeout=30)
-    return r.returncode == 0
+    # 핫스팟 내린 직후 스캔 캐시가 비어 SSID를 못 찾을 수 있어 재시도
+    for attempt in range(3):
+        _nmcli("device", "wifi", "rescan", timeout=15)
+        time.sleep(2)
+        if password:
+            r = _nmcli("device", "wifi", "connect", ssid, "password", password, timeout=30)
+        else:
+            r = _nmcli("device", "wifi", "connect", ssid, timeout=30)
+        if r.returncode == 0:
+            return True
+        print(f"연결 시도 {attempt + 1} 실패: {r.stderr.strip()}")
+    return False
 
 
 _HTML_FORM = """\
@@ -217,11 +224,14 @@ def provision_wifi(GPIO, pins, state) -> bool:
                 time.sleep(0.5)
         except KeyboardInterrupt:
             server.shutdown()
+            server.server_close()
             _stop_hotspot()
             return False
 
         ssid, password = _credentials
+        # serve_forever 종료 + 소켓 해제 (재시도 시 포트 재사용 위해 필수)
         server.shutdown()
+        server.server_close()
 
         print(f"핫스팟 종료 → '{ssid}' 연결 시도")
         disp.display_provisioning_connecting(GPIO, pins, state, ssid)
