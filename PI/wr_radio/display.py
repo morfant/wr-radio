@@ -187,12 +187,11 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
             draw.line([xp, yp - 2, xp, yp + 2], fill=(255, 255, 255), width=1)
 
     elif icon_code == "50":
-        # 안개: 위는 평평한 본체, 아래로 뭉게뭉게 타원 (뒤집힌 구름)
+        # 안개: 구름보다 작은 원 5개가 살짝 겹치며 가로로 나열
         fog = (155, 155, 165)
-        draw.rectangle([x, y + 1, x + 22, y + 9], fill=fog)
-        draw.ellipse([x,      y + 5, x + 10, y + 15], fill=fog)
-        draw.ellipse([x + 6,  y + 7, x + 16, y + 17], fill=fog)
-        draw.ellipse([x + 12, y + 5, x + 22, y + 15], fill=fog)
+        for i in range(5):
+            cx = x + i * 4
+            draw.ellipse([cx, y + 3, cx + 7, y + 10], fill=fog)
 
 
 def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int, charging: bool = False):
