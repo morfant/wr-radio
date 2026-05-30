@@ -493,3 +493,60 @@ def display_time_only(GPIO, pins, state):
     x = (240 - tw) // 2
     draw.text((x, TIME_Y), time_str, font=font_tiny, fill=(100, 200, 255))
     display_image_region(GPIO, pins, state, image, 0, TIME_Y, 239, TIME_Y + 18)
+
+
+def _prov_fonts():
+    try:
+        bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+    except Exception:
+        bold = ImageFont.load_default()
+    try:
+        reg = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    except Exception:
+        reg = ImageFont.load_default()
+    return bold, reg
+
+
+def display_provisioning_screen(GPIO, pins, state,
+                                 ap_ssid="WR-Radio Setup", ap_url="10.42.0.1"):
+    font_bold, font_reg = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    draw.text((120, 28),  "WiFi 설정",       font=font_bold, fill=(255, 255, 255), anchor="mm")
+    draw.line([(20, 50), (220, 50)],          fill=(40, 40, 60), width=1)
+    draw.text((120, 85),  f"'{ap_ssid}'",     font=font_reg,  fill=(255, 220, 80),  anchor="mm")
+    draw.text((120, 110), "에 연결 후",        font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 150), "브라우저에서",       font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 178), ap_url,             font=font_bold, fill=(100, 200, 255), anchor="mm")
+    draw.text((120, 208), "접속하세요",         font=font_reg,  fill=(140, 140, 160), anchor="mm")
+
+    display_image(GPIO, pins, state, img)
+
+
+def display_provisioning_connecting(GPIO, pins, state, ssid: str):
+    font_bold, font_reg = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    draw.text((120, 90),  "연결 중...",   font=font_bold, fill=(255, 220, 80),  anchor="mm")
+    draw.text((120, 130), ssid[:28],      font=font_reg,  fill=(200, 200, 200), anchor="mm")
+
+    display_image(GPIO, pins, state, img)
+
+
+def display_provisioning_success(GPIO, pins, state):
+    font_bold, _ = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((120, 110), "연결됨!", font=font_bold, fill=(100, 220, 100), anchor="mm")
+    display_image(GPIO, pins, state, img)
+
+
+def display_provisioning_failed(GPIO, pins, state):
+    font_bold, font_reg = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((120, 90),  "연결 실패",          font=font_bold, fill=(220, 80, 80),   anchor="mm")
+    draw.text((120, 130), "다시 시도합니다...",   font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    display_image(GPIO, pins, state, img)

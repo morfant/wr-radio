@@ -19,6 +19,7 @@ from . import display
 from .input import InputConfig, ButtonState, read_rotary, handle_button
 from .battery import BatteryMonitor
 from . import bluetooth
+from . import wifi
 
 LOCK_FILE = "/tmp/wr_radio.lock"
 
@@ -36,6 +37,7 @@ PIN_BL = 12
 SYSTEM_MENU_ITEMS = [
     {"label": "Brightness", "action": "brightness"},
     {"label": "Bluetooth",  "action": "bluetooth"},
+    {"label": "WiFi Setup", "action": "wifi_setup"},
     {"label": "Power Off",  "action": "shutdown"},
     {"label": "Back",       "action": "back"},
 ]
@@ -125,20 +127,24 @@ def draw_system_menu(state: AppState, selected_index: int) -> Image.Image:
     draw.text((20, 18), "System", fill=(80, 80, 100), font=font_title)
     draw.line([(20, 38), (220, 38)], fill=(40, 40, 50), width=1)
 
-    # 메뉴 항목
-    item_h = 44
-    start_y = 55
+    # 메뉴 항목 — 항목 수에 따라 간격 자동 조정
+    n = len(SYSTEM_MENU_ITEMS)
+    start_y = 50
+    item_h = min(40, (240 - start_y) // n)
+
     for i, item in enumerate(SYSTEM_MENU_ITEMS):
         y = start_y + i * item_h
         is_selected = (i == selected_index)
 
         if is_selected:
-            draw.rounded_rectangle([(16, y - 2), (224, y + 30)], radius=6, fill=(25, 25, 40))
+            draw.rounded_rectangle([(16, y - 1), (224, y + item_h - 3)],
+                                   radius=6, fill=(25, 25, 40))
             label_color = (230, 230, 255)
         else:
             label_color = (100, 100, 120)
 
-        draw.text((32, y + 4), item["label"], fill=label_color, font=font_item)
+        draw.text((32, y + max(2, (item_h - 18) // 2)),
+                  item["label"], fill=label_color, font=font_item)
 
     return img
 
@@ -618,6 +624,11 @@ def main():
         clear_image = Image.new('RGB', (240, 240), (0, 0, 0))
         display.display_image(GPIO, {'CS': PIN_CS, 'DC': PIN_DC}, state, clear_image)
 
+    # ── WiFi 체크 (연결 없으면 프로비저닝 모드) ────────────
+    if not wifi.is_wifi_connected():
+        print("WiFi 연결 없음 → 프로비저닝 모드")
+        wifi.provision_wifi(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
+
     # ── 시작 시 BT 상태 감지 (mpv 시작 전) ────────────────
     devices = bluetooth.get_paired_devices()
     connected_mac = next(
@@ -831,6 +842,16 @@ def main():
                     display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, blank)
                     img = draw_brightness_menu(state)
                     display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
+
+                elif action == "wifi_setup":
+                    was_playing = state.is_playing
+                    player.stop_playback(state)
+                    wifi.provision_wifi(GPIO, pins, state)
+                    state.current_mode = "normal"
+                    menu_index = 0
+                    if was_playing:
+                        player.play_station(state, state.current_index)
+                    return_to_normal(state, pins, state.radio_stations, state.current_index)
 
                 elif action == "back":
                     state.current_mode = "normal"
