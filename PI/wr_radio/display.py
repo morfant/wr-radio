@@ -434,7 +434,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
 
         # 날씨 아이콘
         if weather_data:
-            icon_x = 90
+            icon_x = 80
             icon_y = location_y + 40
             draw_weather_icon(draw, icon_x, icon_y, str(weather_data.get("icon", "")))
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
