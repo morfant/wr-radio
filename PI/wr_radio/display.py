@@ -186,10 +186,8 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
 
     elif icon_code == "50":
         # 안개: 구름보다 작은 원 5개가 살짝 겹치며 가로로 나열
-        fog = (155, 155, 165)
-        # 크기·위치가 조금씩 다른 원 5개
-        for ox, oy, d in [(0, 3, 5), (4, 0, 4), (8, 5, 5), (12, 1, 4), (16, 4, 5), (20, 0, 4)]:
-            draw.ellipse([x+ox, y+oy, x+ox+d, y+oy+d], fill=fog)
+        for dx, dy in [(2, 5), (6, 2), (10, 7), (14, 3), (18, 6), (22, 2)]:
+            draw.ellipse([x+dx-1, y+dy-1, x+dx+1, y+dy+1], fill=(100, 150, 255))
 
 
 def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int, charging: bool = False):
