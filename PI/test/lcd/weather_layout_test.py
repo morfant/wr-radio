@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""실제 display_radio_info 레이아웃 그대로 날씨 아이콘+온도 확인용 테스트."""
+"""실제 display_radio_info 레이아웃으로 모든 날씨 아이콘을 5초 간격으로 순환."""
 
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
+import time
 import spidev
 import RPi.GPIO as GPIO
 from wr_radio import display
@@ -15,9 +16,18 @@ PIN_DC  = 13
 PIN_RST = 6
 PIN_BL  = 12
 
-# 테스트할 아이콘 코드와 온도
-ICON  = "04"
-TEMP  = 18
+ICONS = [
+    ("01", "Clear",      22),
+    ("02", "Few clouds", 18),
+    ("03", "Clouds",     15),
+    ("04", "Overcast",   12),
+    ("09", "Drizzle",     9),
+    ("10", "Rain",        7),
+    ("11", "Thunder",     6),
+    ("13", "Snow",       -2),
+    ("50", "Mist",       11),
+]
+
 STATION = {
     "name": "London Stave Hill",
     "location": "London, UK",
@@ -47,17 +57,19 @@ def main():
 
     display.init_display(GPIO, {"CS": PIN_CS, "DC": PIN_DC, "RST": PIN_RST}, state, rotation=90)
 
-    display.display_radio_info(
-        GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state,
-        weather_data={"icon": ICON, "temp": TEMP},
-        force_full=True,
-    )
-
-    print(f"아이콘 '{ICON}', {TEMP}°C 표시 완료. Ctrl+C로 종료.")
+    print("5초 간격으로 순환. Ctrl+C로 종료.")
     try:
-        import time
+        i = 0
         while True:
-            time.sleep(1)
+            code, label, temp = ICONS[i % len(ICONS)]
+            print(f"[{i+1}/{len(ICONS)}] {code} {label} {temp}°C")
+            display.display_radio_info(
+                GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state,
+                weather_data={"icon": code, "temp": temp},
+                force_full=True,
+            )
+            i += 1
+            time.sleep(5)
     except KeyboardInterrupt:
         pass
     finally:
