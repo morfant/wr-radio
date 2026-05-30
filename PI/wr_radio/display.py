@@ -544,6 +544,24 @@ def display_provisioning_success(GPIO, pins, state):
     display_image(GPIO, pins, state, img)
 
 
+def display_wifi_waiting(GPIO, pins, state):
+    font_bold, font_reg = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((120, 100), "Connecting to",  font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 125), "WiFi...",         font=font_bold, fill=(100, 200, 255), anchor="mm")
+    display_image(GPIO, pins, state, img)
+
+
+def display_provisioning_error(GPIO, pins, state):
+    font_bold, font_reg = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((120, 90),  "Hotspot failed", font=font_bold, fill=(220, 80, 80),   anchor="mm")
+    draw.text((120, 130), "Retrying...",     font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    display_image(GPIO, pins, state, img)
+
+
 def display_provisioning_failed(GPIO, pins, state):
     font_bold, font_reg = _prov_fonts()
     img  = Image.new("RGB", (240, 240), (0, 0, 0))

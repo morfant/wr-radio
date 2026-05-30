@@ -52,22 +52,13 @@ def _nmcli(*args, timeout=15) -> subprocess.CompletedProcess:
 
 def _start_hotspot() -> bool:
     _nmcli("connection", "delete", _HOTSPOT_CONN, timeout=10)
-    r = _nmcli("connection", "add",
-               "type", "wifi", "ifname", "wlan0",
-               "con-name", _HOTSPOT_CONN,
+    r = _nmcli("device", "wifi", "hotspot",
+               "ifname", "wlan0",
                "ssid", AP_SSID,
-               "802-11-wireless.mode", "ap",
-               "802-11-wireless.band", "bg",
-               "ipv4.method", "shared",
-               "wifi-sec.key-mgmt", "wpa-psk",
-               "wifi-sec.psk", AP_PASSWORD,
-               timeout=10)
+               "password", AP_PASSWORD,
+               timeout=20)
     if r.returncode != 0:
-        print(f"핫스팟 생성 실패: {r.stderr.strip()}")
-        return False
-    r2 = _nmcli("connection", "up", _HOTSPOT_CONN, timeout=15)
-    if r2.returncode != 0:
-        print(f"핫스팟 시작 실패: {r2.stderr.strip()}")
+        print(f"핫스팟 실패: {r.stderr.strip()}")
         return False
     return True
 
@@ -202,7 +193,8 @@ def provision_wifi(GPIO, pins, state) -> bool:
         print(f"스캔 완료: {len(networks)}개")
 
         if not _start_hotspot():
-            time.sleep(5)
+            disp.display_provisioning_error(GPIO, pins, state)
+            time.sleep(10)
             continue
 
         try:

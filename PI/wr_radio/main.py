@@ -626,7 +626,11 @@ def main():
 
     # ── WiFi 체크 — NM이 부팅 후 연결할 시간 대기 (최대 20초) ──
     _wifi_t0 = time.time()
+    _wifi_waiting_shown = False
     while not wifi.is_wifi_connected() and (time.time() - _wifi_t0) < 20:
+        if not _wifi_waiting_shown and (time.time() - _wifi_t0) > 3:
+            display.display_wifi_waiting(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
+            _wifi_waiting_shown = True
         time.sleep(2)
     if not wifi.is_wifi_connected():
         print("WiFi 연결 없음 → 프로비저닝 모드")
