@@ -149,7 +149,16 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
         draw.ellipse([x + 6, y, x + 18, y + 10], fill=(180, 180, 180))
         draw.ellipse([x + 10, y + 4, x + 22, y + 14], fill=(200, 200, 200))
 
-    elif icon_code in ["09", "10"]:
+    elif icon_code == "09":
+        draw.ellipse([x, y, x + 12, y + 8], fill=(120, 120, 120))
+        draw.ellipse([x + 6, y - 2, x + 18, y + 6], fill=(140, 140, 140))
+        # 점선 2줄 (이슬비)
+        for i in range(2):
+            xp = x + 5 + i * 7
+            for dy in range(0, 9, 3):
+                draw.ellipse([xp - 1, y + 10 + dy, xp + 1, y + 11 + dy], fill=(100, 150, 255))
+
+    elif icon_code == "10":
         draw.ellipse([x, y, x + 12, y + 8], fill=(120, 120, 120))
         draw.ellipse([x + 6, y - 2, x + 18, y + 6], fill=(140, 140, 140))
         for i in range(4):
