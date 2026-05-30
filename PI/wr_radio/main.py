@@ -634,7 +634,7 @@ def main():
         time.sleep(2)
     if not wifi.is_wifi_connected():
         print("WiFi 연결 없음 → 프로비저닝 모드")
-        wifi.provision_wifi(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
+        wifi.provision_wifi(GPIO, {"CS": PIN_CS, "DC": PIN_DC, "KEY": PIN_KEY}, state)
 
     # ── 시작 시 BT 상태 감지 (mpv 시작 전) ────────────────
     devices = bluetooth.get_paired_devices()

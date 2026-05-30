@@ -521,7 +521,16 @@ def display_provisioning_screen(GPIO, pins, state,
     draw.text((120, 120), f"PW: {ap_pw}",     font=font_reg,  fill=(180, 220, 180), anchor="mm")
     draw.text((120, 158), "Open browser:",    font=font_reg,  fill=(140, 140, 160), anchor="mm")
     draw.text((120, 183), ap_url,             font=font_bold, fill=(100, 200, 255), anchor="mm")
+    draw.text((120, 220), "Hold knob to cancel", font=font_reg, fill=(90, 90, 105), anchor="mm")
 
+    display_image(GPIO, pins, state, img)
+
+
+def display_provisioning_cancelled(GPIO, pins, state):
+    font_bold, _ = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((120, 110), "Cancelled", font=font_bold, fill=(180, 180, 180), anchor="mm")
     display_image(GPIO, pins, state, img)
 
 

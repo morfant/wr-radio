@@ -248,19 +248,38 @@ def provision_wifi(GPIO, pins, state) -> bool:
         srv_thread = threading.Thread(target=server.serve_forever, daemon=True)
         srv_thread.start()
 
+        # 자격증명 입력 대기. 버튼 1.5초 길게 누르면 취소.
+        cancelled = False
+        key_pin = pins.get("KEY")
+        key_press_start = 0.0
         try:
             while _credentials is None:
-                time.sleep(0.5)
+                if key_pin is not None:
+                    if GPIO.input(key_pin) == 0:   # 풀업: 0 = 눌림
+                        if key_press_start == 0.0:
+                            key_press_start = time.time()
+                        elif time.time() - key_press_start >= 1.5:
+                            cancelled = True
+                            break
+                    else:
+                        key_press_start = 0.0
+                time.sleep(0.1)
         except KeyboardInterrupt:
-            server.shutdown()
-            server.server_close()
-            _stop_hotspot()
-            return False
+            cancelled = True
 
-        ssid, password = _credentials
         # serve_forever 종료 + 소켓 해제 (재시도 시 포트 재사용 위해 필수)
         server.shutdown()
         server.server_close()
+
+        if cancelled:
+            print("프로비저닝 취소 → 일반 모드 복귀")
+            disp.display_provisioning_cancelled(GPIO, pins, state)
+            # 핫스팟 제거 → NM이 저장된 프로파일로 자동 재연결
+            _cleanup_hotspots()
+            time.sleep(1.5)
+            return False
+
+        ssid, password = _credentials
 
         print(f"핫스팟 종료 → '{ssid}' 연결 시도")
         disp.display_provisioning_connecting(GPIO, pins, state, ssid)
