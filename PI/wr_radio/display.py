@@ -186,7 +186,8 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
 
     elif icon_code == "50":
         # 안개: 구름보다 작은 원 5개가 살짝 겹치며 가로로 나열
-        for dx, dy in [(2, 5), (6, 2), (10, 7), (14, 3), (18, 6), (22, 2)]:
+        for dx, dy in [(2, 5), (6, 2), (10, 7), (14, 3), (18, 6), (22, 2),
+                       (4, 11), (12, 13), (20, 10), (8, 14)]:
             draw.ellipse([x+dx-1, y+dy-1, x+dx+1, y+dy+1], fill=(100, 150, 255))
 
 
