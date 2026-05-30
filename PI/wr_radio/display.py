@@ -150,12 +150,14 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
         draw.ellipse([x + 10, y + 4, x + 22, y + 14], fill=(200, 200, 200))
 
     elif icon_code == "04":
-        # 작은 구름 두 개 나란히
-        # 03과 같은 구름 모양 55% 크기로 두 개 나란히
-        for ox in (0, 13):
-            draw.ellipse([x+ox,   y+3, x+ox+8,  y+10], fill=(160, 160, 160))
-            draw.ellipse([x+ox+2, y,   x+ox+9,  y+7 ], fill=(180, 180, 180))
-            draw.ellipse([x+ox+4, y+3, x+ox+12, y+10], fill=(200, 200, 200))
+        # 뒤쪽 구름 (15px 오프셋, 살짝 어둡게)
+        draw.ellipse([x + 15, y + 4, x + 27, y + 14], fill=(130, 130, 140))
+        draw.ellipse([x + 21, y,     x + 33, y + 10], fill=(145, 145, 155))
+        draw.ellipse([x + 25, y + 4, x + 37, y + 14], fill=(155, 155, 165))
+        # 앞쪽 구름 (03과 동일)
+        draw.ellipse([x,      y + 4, x + 12, y + 14], fill=(160, 160, 160))
+        draw.ellipse([x + 6,  y,     x + 18, y + 10], fill=(180, 180, 180))
+        draw.ellipse([x + 10, y + 4, x + 22, y + 14], fill=(200, 200, 200))
 
     elif icon_code == "09":
         draw.ellipse([x, y, x + 12, y + 8], fill=(120, 120, 120))
