@@ -438,7 +438,7 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
             icon_y = location_y + 40
             draw_weather_icon(draw, icon_x, icon_y, str(weather_data.get("icon", "")))
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
-            draw.text((icon_x + 28, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
+            draw.text((icon_x + 40, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
 
         # 배터리 + BT 상태 (상단)
         if state.battery_monitor is not None:
