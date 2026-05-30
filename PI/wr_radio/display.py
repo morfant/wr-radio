@@ -186,10 +186,10 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int, c
         outline_color = (100, 200, 100)
     else:
         outline_color = (100, 100, 100)
-    draw.rectangle([x, y + 2, x + 24, y + 12], outline=outline_color)
-    draw.rectangle([x + 24, y + 5, x + 26, y + 9], fill=outline_color)
+    draw.rectangle([x, y + 2, x + 20, y + 12], outline=outline_color)
+    draw.rectangle([x + 20, y + 5, x + 22, y + 9], fill=outline_color)
 
-    fill_width = max(0, int(22 * percent / 100))
+    fill_width = max(0, int(18 * percent / 100))
     if fill_width > 0:
         if charging:
             fill_color = (100, 220, 100)
@@ -205,7 +205,7 @@ def draw_battery_icon(draw: ImageDraw.ImageDraw, x: int, y: int, percent: int, c
 
     if charging:
         # lightning bolt (배터리 외곽선 안쪽 y+3~y+11에 맞춤)
-        bolt = [(x+13, y+3), (x+10, y+8), (x+13, y+8), (x+11, y+11), (x+16, y+7), (x+13, y+7), (x+15, y+3)]
+        bolt = [(x+10, y+3), (x+7, y+8), (x+10, y+8), (x+8, y+11), (x+13, y+7), (x+10, y+7), (x+12, y+3)]
         draw.polygon(bolt, fill=(255, 220, 50))
 
 
