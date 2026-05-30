@@ -624,17 +624,21 @@ def main():
         clear_image = Image.new('RGB', (240, 240), (0, 0, 0))
         display.display_image(GPIO, {'CS': PIN_CS, 'DC': PIN_DC}, state, clear_image)
 
-    # ── WiFi 체크 — NM이 부팅 후 연결할 시간 대기 (최대 20초) ──
-    _wifi_t0 = time.time()
-    _wifi_waiting_shown = False
-    while not wifi.is_wifi_connected() and (time.time() - _wifi_t0) < 20:
-        if not _wifi_waiting_shown and (time.time() - _wifi_t0) > 3:
-            display.display_wifi_waiting(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
-            _wifi_waiting_shown = True
-        time.sleep(2)
+    # ── WiFi 체크 ──────────────────────────────────────────
+    # 저장된 프로파일이 있으면 NM이 부팅 후 연결할 시간을 준다 (재부팅 레이스).
+    # 새 기기(프로파일 없음)는 대기 없이 바로 프로비저닝으로 진입.
     if not wifi.is_wifi_connected():
-        print("WiFi 연결 없음 → 프로비저닝 모드")
-        wifi.provision_wifi(GPIO, {"CS": PIN_CS, "DC": PIN_DC, "KEY": PIN_KEY}, state)
+        if wifi.has_saved_wifi():
+            _wifi_t0 = time.time()
+            _wifi_waiting_shown = False
+            while not wifi.is_wifi_connected() and (time.time() - _wifi_t0) < 20:
+                if not _wifi_waiting_shown and (time.time() - _wifi_t0) > 3:
+                    display.display_wifi_waiting(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
+                    _wifi_waiting_shown = True
+                time.sleep(2)
+        if not wifi.is_wifi_connected():
+            print("WiFi 연결 없음 → 프로비저닝 모드")
+            wifi.provision_wifi(GPIO, {"CS": PIN_CS, "DC": PIN_DC, "KEY": PIN_KEY}, state)
 
     # ── 시작 시 BT 상태 감지 (mpv 시작 전) ────────────────
     devices = bluetooth.get_paired_devices()

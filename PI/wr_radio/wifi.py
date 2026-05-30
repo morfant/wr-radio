@@ -27,6 +27,19 @@ def is_wifi_connected() -> bool:
         return False
 
 
+def has_saved_wifi() -> bool:
+    """저장된 wifi 연결 프로파일이 하나라도 있는지. 새 기기 판별용."""
+    try:
+        r = subprocess.run(
+            ["nmcli", "-t", "-f", "TYPE", "connection", "show"],
+            capture_output=True, text=True, timeout=5
+        )
+        return any(line.strip() == "802-11-wireless"
+                   for line in r.stdout.splitlines())
+    except Exception:
+        return False
+
+
 def scan_networks() -> list:
     try:
         r = subprocess.run(
