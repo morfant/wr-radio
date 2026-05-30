@@ -144,10 +144,16 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
         draw.ellipse([x + 8, y + 6, x + 20, y + 16], fill=(180, 180, 180))
         draw.ellipse([x + 12, y + 4, x + 24, y + 14], fill=(200, 200, 200))
 
-    elif icon_code in ["03", "04"]:
+    elif icon_code == "03":
         draw.ellipse([x, y + 4, x + 12, y + 14], fill=(160, 160, 160))
         draw.ellipse([x + 6, y, x + 18, y + 10], fill=(180, 180, 180))
         draw.ellipse([x + 10, y + 4, x + 22, y + 14], fill=(200, 200, 200))
+
+    elif icon_code == "04":
+        # 작은 구름 두 개 나란히
+        for ox in (0, 12):
+            draw.ellipse([x + ox,     y + 3, x + ox + 10, y + 11], fill=(160, 160, 160))
+            draw.ellipse([x + ox + 2, y,     x + ox + 9,  y + 6 ], fill=(175, 175, 175))
 
     elif icon_code == "09":
         draw.ellipse([x, y, x + 12, y + 8], fill=(120, 120, 120))
