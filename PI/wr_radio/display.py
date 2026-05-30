@@ -149,14 +149,9 @@ def draw_weather_icon(draw: ImageDraw.ImageDraw, x: int, y: int, icon_code: str)
         draw.ellipse([x + 6, y, x + 18, y + 10], fill=(180, 180, 180))
         draw.ellipse([x + 10, y + 4, x + 22, y + 14], fill=(200, 200, 200))
 
-    elif icon_code == "04":
-        # 뒤쪽 구름 (15px 오프셋, 살짝 어둡게)
-        draw.ellipse([x + 15, y + 4, x + 27, y + 14], fill=(130, 130, 140))
-        draw.ellipse([x + 21, y,     x + 33, y + 10], fill=(145, 145, 155))
-        draw.ellipse([x + 25, y + 4, x + 37, y + 14], fill=(155, 155, 165))
-        # 앞쪽 구름 (03과 동일)
-        draw.ellipse([x,      y + 4, x + 12, y + 14], fill=(160, 160, 160))
-        draw.ellipse([x + 6,  y,     x + 18, y + 10], fill=(180, 180, 180))
+    elif icon_code in ["03", "04"]:
+        draw.ellipse([x, y + 4, x + 12, y + 14], fill=(160, 160, 160))
+        draw.ellipse([x + 6, y, x + 18, y + 10], fill=(180, 180, 180))
         draw.ellipse([x + 10, y + 4, x + 22, y + 14], fill=(200, 200, 200))
 
     elif icon_code == "09":
@@ -434,11 +429,11 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
 
         # 날씨 아이콘
         if weather_data:
-            icon_x = 80
-            icon_y = location_y + 40
+            icon_x = 86
+            icon_y = location_y + 43
             draw_weather_icon(draw, icon_x, icon_y, str(weather_data.get("icon", "")))
             temp_text = f"{int(weather_data.get('temp', 0))}°C"
-            draw.text((icon_x + 40, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
+            draw.text((icon_x + 30, location_y + 42), temp_text, font=font_small, fill=(100, 200, 255))
 
         # 배터리 + BT 상태 (상단)
         if state.battery_monitor is not None:
