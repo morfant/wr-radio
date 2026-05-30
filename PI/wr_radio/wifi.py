@@ -9,7 +9,6 @@ from urllib.parse import parse_qs, unquote_plus
 AP_SSID     = "WR-Radio Setup"
 AP_PASSWORD = "wrradio1"
 AP_IP       = "10.42.0.1"
-_HOTSPOT_CONN = "wr-radio-hotspot"
 
 _credentials = None   # (ssid, password) set by HTTP handler
 
@@ -50,8 +49,23 @@ def _nmcli(*args, timeout=15) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, timeout=timeout)
 
 
+def _cleanup_hotspots():
+    """AP 모드 wifi 연결을 모두 삭제. nmcli가 핫스팟을 'Hotspot' 등으로
+    자동 명명하므로 이름이 아니라 모드(ap)로 찾아 정리한다."""
+    r = _nmcli("-t", "-f", "NAME,TYPE", "connection", "show", timeout=10)
+    for line in r.stdout.splitlines():
+        parts = line.split(":")
+        if len(parts) < 2 or parts[1] != "802-11-wireless":
+            continue
+        name = parts[0]
+        m = _nmcli("-t", "-f", "802-11-wireless.mode",
+                   "connection", "show", name, timeout=10)
+        if m.stdout.strip().split(":", 1)[-1] == "ap":
+            _nmcli("connection", "delete", name, timeout=10)
+
+
 def _start_hotspot() -> bool:
-    _nmcli("connection", "delete", _HOTSPOT_CONN, timeout=10)
+    _cleanup_hotspots()
     r = _nmcli("device", "wifi", "hotspot",
                "ifname", "wlan0",
                "ssid", AP_SSID,
@@ -64,8 +78,7 @@ def _start_hotspot() -> bool:
 
 
 def _stop_hotspot():
-    _nmcli("connection", "down", _HOTSPOT_CONN, timeout=10)
-    _nmcli("connection", "delete", _HOTSPOT_CONN, timeout=10)
+    _cleanup_hotspots()
 
 
 def _connect_to_network(ssid: str, password: str) -> bool:
