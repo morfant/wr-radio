@@ -6,8 +6,9 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, unquote_plus
 
-AP_SSID = "WR-Radio Setup"
-AP_IP   = "10.42.0.1"
+AP_SSID     = "WR-Radio Setup"
+AP_PASSWORD = "wrradio1"
+AP_IP       = "10.42.0.1"
 _HOTSPOT_CONN = "wr-radio-hotspot"
 
 _credentials = None   # (ssid, password) set by HTTP handler
@@ -54,7 +55,9 @@ def _start_hotspot() -> bool:
          "ssid", AP_SSID,
          "802-11-wireless.mode", "ap",
          "802-11-wireless.band", "bg",
-         "ipv4.method", "shared"],
+         "ipv4.method", "shared",
+         "wifi-sec.key-mgmt", "wpa-psk",
+         "wifi-sec.psk", AP_PASSWORD],
         capture_output=True, text=True, timeout=10
     )
     if r.returncode != 0:
@@ -214,7 +217,8 @@ def provision_wifi(GPIO, pins, state) -> bool:
             ap_url = f"{AP_IP}:8080"
 
         disp.display_provisioning_screen(GPIO, pins, state,
-                                         ap_ssid=AP_SSID, ap_url=ap_url)
+                                         ap_ssid=AP_SSID, ap_pw=AP_PASSWORD,
+                                         ap_url=ap_url)
         print(f"핫스팟 '{AP_SSID}' 시작, 접속 주소: {ap_url}")
 
         srv_thread = threading.Thread(target=server.serve_forever, daemon=True)

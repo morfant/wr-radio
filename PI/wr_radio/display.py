@@ -508,18 +508,19 @@ def _prov_fonts():
 
 
 def display_provisioning_screen(GPIO, pins, state,
-                                 ap_ssid="WR-Radio Setup", ap_url="10.42.0.1"):
+                                 ap_ssid="WR-Radio Setup", ap_pw="wrradio1",
+                                 ap_url="10.42.0.1"):
     font_bold, font_reg = _prov_fonts()
     img  = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    draw.text((120, 28),  "WiFi Setup",      font=font_bold, fill=(255, 255, 255), anchor="mm")
-    draw.line([(20, 50), (220, 50)],          fill=(40, 40, 60), width=1)
-    draw.text((120, 85),  f"Connect to:",    font=font_reg,  fill=(140, 140, 160), anchor="mm")
-    draw.text((120, 110), f"'{ap_ssid}'",    font=font_reg,  fill=(255, 220, 80),  anchor="mm")
-    draw.text((120, 150), "then open:",      font=font_reg,  fill=(140, 140, 160), anchor="mm")
-    draw.text((120, 178), ap_url,            font=font_bold, fill=(100, 200, 255), anchor="mm")
-    draw.text((120, 208), "in browser",      font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 22),  "WiFi Setup",       font=font_bold, fill=(255, 255, 255), anchor="mm")
+    draw.line([(20, 42), (220, 42)],           fill=(40, 40, 60), width=1)
+    draw.text((120, 72),  "Connect to WiFi:", font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 95),  f"'{ap_ssid}'",     font=font_reg,  fill=(255, 220, 80),  anchor="mm")
+    draw.text((120, 120), f"PW: {ap_pw}",     font=font_reg,  fill=(180, 220, 180), anchor="mm")
+    draw.text((120, 158), "Open browser:",    font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 183), ap_url,             font=font_bold, fill=(100, 200, 255), anchor="mm")
 
     display_image(GPIO, pins, state, img)
 
