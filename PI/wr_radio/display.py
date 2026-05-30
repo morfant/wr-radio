@@ -513,13 +513,13 @@ def display_provisioning_screen(GPIO, pins, state,
     img  = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    draw.text((120, 28),  "WiFi 설정",       font=font_bold, fill=(255, 255, 255), anchor="mm")
+    draw.text((120, 28),  "WiFi Setup",      font=font_bold, fill=(255, 255, 255), anchor="mm")
     draw.line([(20, 50), (220, 50)],          fill=(40, 40, 60), width=1)
-    draw.text((120, 85),  f"'{ap_ssid}'",     font=font_reg,  fill=(255, 220, 80),  anchor="mm")
-    draw.text((120, 110), "에 연결 후",        font=font_reg,  fill=(140, 140, 160), anchor="mm")
-    draw.text((120, 150), "브라우저에서",       font=font_reg,  fill=(140, 140, 160), anchor="mm")
-    draw.text((120, 178), ap_url,             font=font_bold, fill=(100, 200, 255), anchor="mm")
-    draw.text((120, 208), "접속하세요",         font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 85),  f"Connect to:",    font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 110), f"'{ap_ssid}'",    font=font_reg,  fill=(255, 220, 80),  anchor="mm")
+    draw.text((120, 150), "then open:",      font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 178), ap_url,            font=font_bold, fill=(100, 200, 255), anchor="mm")
+    draw.text((120, 208), "in browser",      font=font_reg,  fill=(140, 140, 160), anchor="mm")
 
     display_image(GPIO, pins, state, img)
 
@@ -529,7 +529,7 @@ def display_provisioning_connecting(GPIO, pins, state, ssid: str):
     img  = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    draw.text((120, 90),  "연결 중...",   font=font_bold, fill=(255, 220, 80),  anchor="mm")
+    draw.text((120, 90),  "Connecting...", font=font_bold, fill=(255, 220, 80),  anchor="mm")
     draw.text((120, 130), ssid[:28],      font=font_reg,  fill=(200, 200, 200), anchor="mm")
 
     display_image(GPIO, pins, state, img)
@@ -539,7 +539,7 @@ def display_provisioning_success(GPIO, pins, state):
     font_bold, _ = _prov_fonts()
     img  = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.text((120, 110), "연결됨!", font=font_bold, fill=(100, 220, 100), anchor="mm")
+    draw.text((120, 110), "Connected!", font=font_bold, fill=(100, 220, 100), anchor="mm")
     display_image(GPIO, pins, state, img)
 
 
@@ -547,6 +547,6 @@ def display_provisioning_failed(GPIO, pins, state):
     font_bold, font_reg = _prov_fonts()
     img  = Image.new("RGB", (240, 240), (0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.text((120, 90),  "연결 실패",          font=font_bold, fill=(220, 80, 80),   anchor="mm")
-    draw.text((120, 130), "다시 시도합니다...",   font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 90),  "Failed",        font=font_bold, fill=(220, 80, 80),   anchor="mm")
+    draw.text((120, 130), "Retrying...",   font=font_reg,  fill=(140, 140, 160), anchor="mm")
     display_image(GPIO, pins, state, img)
