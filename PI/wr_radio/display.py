@@ -449,3 +449,33 @@ def display_radio_info(GPIO, pins, state, weather_data=None, force_full=False):
         state.animation_frame = (state.animation_frame + 1) % 100
         display_image_region(GPIO, pins, state, image, 0, 125, 239, 165)
         state.last_displayed_playing = state.is_playing
+
+
+def display_time_only(GPIO, pins, state):
+    """시간 텍스트 영역만 갱신 (y=68 고정 strip). 분 단위 호출용."""
+    station = state.radio_stations[state.current_index]
+    if "timezone" not in station:
+        return
+
+    try:
+        font_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    except Exception:
+        font_tiny = ImageFont.load_default()
+
+    try:
+        tz = pytz.timezone(station["timezone"])
+        local_time = datetime.now(tz)
+        utc_offset = local_time.strftime("%z")
+        utc_offset_str = f"UTC{utc_offset[:3]}:{utc_offset[3:]}"
+        time_str = f"{local_time.strftime('%H:%M')} ({utc_offset_str})"
+    except Exception:
+        return
+
+    TIME_Y = 68
+    image = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    bbox = draw.textbbox((0, 0), time_str, font=font_tiny)
+    tw = bbox[2] - bbox[0]
+    x = (240 - tw) // 2
+    draw.text((x, TIME_Y), time_str, font=font_tiny, fill=(100, 200, 255))
+    display_image_region(GPIO, pins, state, image, 0, TIME_Y, 239, TIME_Y + 18)

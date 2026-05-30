@@ -685,6 +685,7 @@ def main():
     last_animation_update = 0.0
     last_battery_update = 0.0
     last_weather_check = 0.0
+    last_time_minute = -1
     menu_index = 0
 
     print("=" * 50)
@@ -900,6 +901,13 @@ def main():
                 if wd and state.last_displayed_weather != wd:
                     display.display_radio_info(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, weather_data=wd, force_full=True)
                     state.last_displayed_weather = wd
+
+            # 분 단위 시간 갱신
+            if state.current_mode == "normal":
+                cur_minute = int(now / 60)
+                if cur_minute != last_time_minute:
+                    last_time_minute = cur_minute
+                    display.display_time_only(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state)
 
             # save
             if state.needs_save and (now - state.last_change_time) >= input_cfg.save_delay_sec:
