@@ -1,0 +1,24 @@
+{
+    "Header": {
+        "Comment": "All values are metric (mm)",
+        "CreationDate": "2026-05-21T12:27:17Z",
+        "GenerationSoftware": {
+            "Application": "Fusion Electronics",
+            "Vendor": "Autodesk",
+            "Version": "9.7.0"
+        },
+        "Part": "Single"
+    },
+    "Overall": {
+        "BoardThickness": 1.6608,
+        "LayerNumber": 2,
+        "Name": {
+            "ProjectId": "radio-hat"
+        },
+        "Owner": "gangil lee <morpain@karts.ac.kr>",
+        "Size": {
+            "X": 63.48,
+            "Y": 69.98
+        }
+    }
+}
