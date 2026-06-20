@@ -44,7 +44,7 @@ There is no test suite or linter configured — tests are hardware integration t
 
 ## Configuration
 
-Config file is hardcoded to `/home/wr-radio/wr-radio/config.json`. On first run it is created automatically with default stations. To add stations, edit that file directly. Each station needs `name`, `url`, `location`, `lat`, `lon`, `color` fields. See `PI/config.json.example` for the schema.
+Config file is hardcoded to `/home/wr-radio/wr-radio/config.json`. On first run it is created automatically with default stations. Stations can be managed from a browser (see "Station Management Web UI") or by editing that file directly. Each station needs `name`, `url`, `location`, `lat`, `lon`, `color` fields (`timezone` is derived from lat/lon at load by `normalize_stations()`, so it need not be stored). See `PI/config.json.example` for the schema.
 
 Weather requires an OpenWeatherMap API key set in `openweather_api_key`.
 
@@ -62,6 +62,7 @@ Weather requires an OpenWeatherMap API key set in `openweather_api_key`.
 - **`weather.py`** — OpenWeatherMap API, 10-minute cache in `AppState.weather_cache`, fetches in daemon threads
 - **`input.py`** — Pure logic for rotary encoder (S1/S2 edge detection with debounce) and button (short press / long press distinction)
 - **`wifi.py`** — WiFi provisioning via `nmcli`. When WiFi is unavailable, starts a WPA2 hotspot ("WR-Radio Setup") and serves a stdlib `http.server` config page so the user enters home WiFi credentials from a browser. See "WiFi Provisioning" section below
+- **`webadmin.py`** — Always-on stdlib `http.server` (port 8080) for managing the station list from a phone/PC browser. Started once at boot, runs for the app lifetime in a daemon thread. See "Station Management Web UI" section below
 
 ### GPIO Pin Assignments (BCM)
 
@@ -92,7 +93,17 @@ normal ──(long press)───▶ system_menu ──(select Brightness)─�
 
 All modes time out after 3 seconds of inactivity (`InputConfig.mode_timeout_sec`).
 
-System menu items (`SYSTEM_MENU_ITEMS` in `main.py`): Brightness, Bluetooth, **WiFi Setup**, Power Off, Back. WiFi Setup calls the blocking `wifi.provision_wifi()` (re-provisioning after relocating to a new network).
+System menu items (`SYSTEM_MENU_ITEMS` in `main.py`): Brightness, Bluetooth, **Manage Stations**, **WiFi Setup**, Power Off, Back. WiFi Setup calls the blocking `wifi.provision_wifi()` (re-provisioning after relocating to a new network). Manage Stations shows the web UI URL on the LCD (`show_station_admin()`, blocks until knob press); the web server itself runs continuously regardless of this menu.
+
+## Station Management Web UI (webadmin.py)
+
+Lets users add/edit/delete/reorder radio stations from a phone/PC browser, instead of SSHing in to edit `config.json`. The server runs **always-on** (started once at boot in `main()` via `webadmin.start_server(state)`), bound to `0.0.0.0:8080` on the home WiFi (STA mode). Access URL: `http://<hostname>.local:8080` (mDNS/avahi; stable across IP changes). The "Manage Stations" menu item just displays this URL on the LCD. Idle cost is negligible (server thread blocks on `accept()`).
+
+**Thread-safety design — the critical part (do not regress):** `state.radio_stations` / `state.current_index` are indexed without bounds checks all over (`player.py`, `display.py`, the main loop). So the web thread **never mutates `state` directly**. Instead:
+1. The web handler writes the new list to `config.json` via `config.update_stations()` (atomic temp-file + `os.replace`, under the shared `config._config_lock` that also guards `save_settings()` — prevents read-modify-write races), then sets `state.stations_dirty = True` (a plain bool; safe under the GIL).
+2. The main loop checks `stations_dirty` at the top of each iteration and calls `reload_stations()` — the **only** place `radio_stations`/`current_index` are reassigned from web edits. It clears the flag first (so edits arriving mid-reload are caught next loop), reloads + `normalize_stations()`, and **tracks the playing station by URL**: if the playing station's URL still exists in the new list, `current_index` follows it (so reorder / deleting an earlier station never interrupts playback); if it's gone (deleted or its URL edited), it clamps the index and sets `pending_play` to switch.
+
+**Routes** (`BaseHTTPRequestHandler`, `ThreadingHTTPServer` with `daemon_threads`): `GET /` (list + add form), `GET /edit?i=N` (prefilled edit form), `POST /add|/edit|/delete|/move` → validate with `config.validate_station()` → `update_stations()` + dirty flag → `303` redirect. Invalid input re-renders the form with an error. **Deleting the last remaining station is refused** (empty list would crash the bounds-free indexing). No auth (home-LAN device, explicit assumption).
 
 ## WiFi Provisioning (wifi.py)
 
