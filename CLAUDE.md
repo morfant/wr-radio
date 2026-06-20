@@ -105,6 +105,10 @@ Lets users add/edit/delete/reorder radio stations from a phone/PC browser, inste
 
 **Routes** (`BaseHTTPRequestHandler`, `ThreadingHTTPServer` with `daemon_threads`): `GET /` (list + add form), `GET /edit?i=N` (prefilled edit form), `POST /add|/edit|/delete|/move` → validate with `config.validate_station()` → `update_stations()` + dirty flag → `303` redirect. Invalid input re-renders the form with an error. **Deleting the last remaining station is refused** (empty list would crash the bounds-free indexing). No auth (home-LAN device, explicit assumption).
 
+**Coordinate entry** (three ways): manual decimal; **place-name geocoding** — a "Look up" button hits `GET /geocode?q=` which calls the OpenWeatherMap Geocoding API (reusing `state.openweather_api_key`) and fills lat/lon; and **DMS** — `_parse_coord()` converts `35°18'31"N` style input to decimal server-side in `_build_station()`. The `location` input is capped at `LOCATION_MAXLEN` (30) so it can't overflow the LCD line.
+
+**Locusonus browser** (`GET /browse`, `POST /add_locusonus`): lists the live streams from the Locustream Icecast server (`LOCUS_STATUS_URL` = `…/status-json.xsl`, 5-min cache in `_locus_cache`) with listener counts. `_normalize_locus_url()` keeps only `.mp3`/`.ogg` mounts and rewrites each to the public `https://locus.creacast.com:9443/<mount>` form (verified reachable/playable). Adding maps `server_name` → name and **geocodes the place-name part** (text before " - ") for coordinates; on geocode failure it falls back to the manual add form prefilled with name/url. Already-added streams (URL match) show "Added" instead of a button. Note: Locusonus mics are intermittent, so the list only shows currently-live streams.
+
 ## WiFi Provisioning (wifi.py)
 
 `provision_wifi()` is a **blocking** function (not a main-loop mode) called from two places in `main.py`:
