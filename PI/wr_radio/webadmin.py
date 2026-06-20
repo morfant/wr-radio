@@ -8,6 +8,7 @@ wifi.py의 stdlib http.server 패턴을 차용."""
 
 import html
 import json
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -15,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 from . import config
 
 PORT = 8080
+LOCATION_MAXLEN = 30   # LCD location 줄(14px)이 240px 화면에서 잘리지 않는 안전선
 DEFAULT_COLOR = (100, 200, 255)
 
 
@@ -46,6 +48,7 @@ button.primary:hover{background:#38b}
 button.lookup{width:100%;padding:9px;background:#444;border:1px solid #555;color:#cde;border-radius:6px;font-size:.95em;cursor:pointer}
 button.lookup:hover{background:#555}
 .geo{font-size:.78em;color:#9bf;min-height:1.1em;margin-top:4px}
+.hint{font-size:.75em;color:#888;margin-top:4px}
 a.back{color:#7af;font-size:.9em}
 """
 
@@ -106,12 +109,13 @@ def _station_form(action: str, st=None, index=None, error="") -> str:
 <label>Stream URL</label>
 <input name="url" value="{url}" placeholder="https://..." required>
 <label>Location</label>
-<input name="location" value="{loc}" placeholder="City, Country">
+<input name="location" value="{loc}" placeholder="City, Country" maxlength="{LOCATION_MAXLEN}">
 {_PLACE_BLOCK}
 <div class="row">
 <div><label>Latitude</label><input name="lat" value="{lat}" placeholder="-90 ~ 90" required></div>
 <div><label>Longitude</label><input name="lon" value="{lon}" placeholder="-180 ~ 180" required></div>
 </div>
+<div class="hint">Decimal (35.31, 135.72) or DMS (35 18 31 N) accepted.</div>
 <label>Color (R / G / B, 0-255)</label>
 <div class="row">
 <div><input name="cr" value="{r}" placeholder="R"></div>
@@ -175,12 +179,13 @@ def _list_page(stations, msg="", err="") -> str:
 <label>Stream URL</label>
 <input name="url" placeholder="https://..." required>
 <label>Location</label>
-<input name="location" placeholder="City, Country">
+<input name="location" placeholder="City, Country" maxlength="{LOCATION_MAXLEN}">
 {_PLACE_BLOCK}
 <div class="row">
 <div><label>Latitude</label><input name="lat" placeholder="-90 ~ 90" required></div>
 <div><label>Longitude</label><input name="lon" placeholder="-180 ~ 180" required></div>
 </div>
+<div class="hint">Decimal (35.31, 135.72) or DMS (35 18 31 N) accepted.</div>
 <label>Color (R / G / B, 0-255)</label>
 <div class="row">
 <div><input name="cr" placeholder="R"></div>
@@ -197,6 +202,31 @@ def _field(params, key, default=""):
     return params.get(key, [default])[0].strip()
 
 
+def _parse_coord(s: str) -> str:
+    """좌표 입력을 소수(decimal degrees) 문자열로 정규화.
+    소수('35.31', '-0.04')는 그대로, 도-분-초(DMS, '35°18'31\"N')는 변환.
+    파싱 불가 시 원문 반환 → validate_station이 '숫자여야 한다'로 거른다."""
+    s = s.strip()
+    if not s:
+        return s
+    try:
+        return str(float(s))            # 이미 소수
+    except ValueError:
+        pass
+    hemi_m = re.search(r"[NSEWnsew]", s)
+    hemi = hemi_m.group(0).upper() if hemi_m else ""
+    nums = re.findall(r"\d+(?:\.\d+)?", s)
+    if not nums:
+        return s
+    deg = float(nums[0])
+    minutes = float(nums[1]) if len(nums) > 1 else 0.0
+    seconds = float(nums[2]) if len(nums) > 2 else 0.0
+    val = deg + minutes / 60.0 + seconds / 3600.0
+    if s.startswith("-") or hemi in ("S", "W"):
+        val = -val
+    return str(round(val, 6))
+
+
 def _build_station(params):
     """폼 파라미터 → 스테이션 dict. color는 빈칸이면 None(검증 후 기본색)."""
     cr, cg, cb = (_field(params, "cr"), _field(params, "cg"), _field(params, "cb"))
@@ -205,8 +235,8 @@ def _build_station(params):
         "name": _field(params, "name"),
         "url": _field(params, "url"),
         "location": _field(params, "location"),
-        "lat": _field(params, "lat"),
-        "lon": _field(params, "lon"),
+        "lat": _parse_coord(_field(params, "lat")),
+        "lon": _parse_coord(_field(params, "lon")),
         "color": color,
     }
 
