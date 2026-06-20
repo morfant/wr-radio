@@ -10,6 +10,7 @@ import html
 import json
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -17,6 +18,12 @@ from . import config
 
 PORT = 8080
 LOCATION_MAXLEN = 30   # LCD location 줄(14px)이 240px 화면에서 잘리지 않는 안전선
+
+# Locusonus(Locustream) Icecast 서버 — 라이브 스트림 목록을 JSON으로 제공
+LOCUS_STATUS_URL = "https://locus.creacast.com:9443/status-json.xsl"
+LOCUS_BASE = "https://locus.creacast.com:9443"
+LOCUS_TTL = 300.0   # 목록 캐시 수명(초)
+_locus_cache = {"t": 0.0, "data": []}
 DEFAULT_COLOR = (100, 200, 255)
 
 
@@ -39,6 +46,8 @@ h2{font-size:1.05em;color:#9bf;margin-top:28px}
 .acts form{margin:0}
 .acts button,.acts a{display:inline-block;padding:6px 9px;font-size:.8em;border-radius:5px;border:1px solid #444;background:#222;color:#cde;text-decoration:none;cursor:pointer}
 .acts .del{color:#f99;border-color:#633}
+.added{color:#7c7;font-size:.8em;padding:6px 9px;white-space:nowrap}
+a.browse{display:inline-block;margin:4px 0 8px;color:#7af;font-size:.92em}
 label{display:block;font-size:.82em;color:#aaa;margin:12px 0 4px}
 input{width:100%;padding:9px;background:#222;border:1px solid #444;color:#eee;border-radius:6px;font-size:1em}
 .row{display:flex;gap:8px}
@@ -171,6 +180,7 @@ def _list_page(stations, msg="", err="") -> str:
     return f"""
 <h1>WR-Radio Stations</h1>
 {banner}
+<a class="browse" href="/browse">&#127758; Browse Locusonus live streams &rarr;</a>
 {''.join(rows)}
 <h2>Add a new station</h2>
 <form method="POST" action="/add">
@@ -195,6 +205,45 @@ def _list_page(stations, msg="", err="") -> str:
 <button class="primary" type="submit">Add station</button>
 </form>
 """ + _GEO_SCRIPT
+
+
+def _browse_page(streams, existing_urls, msg="", err="") -> str:
+    rows = []
+    for s in streams:
+        added = s["url"] in existing_urls
+        listeners = s.get("listeners", 0)
+        if added:
+            action = '<span class="added">&#10003; Added</span>'
+        else:
+            action = (
+                '<form method="POST" action="/add_locusonus">'
+                f'<input type="hidden" name="url" value="{_esc(s["url"])}">'
+                f'<input type="hidden" name="name" value="{_esc(s["name"])}">'
+                '<button>Add</button></form>')
+        rows.append(f"""
+<div class="st">
+<div class="info">
+<div class="nm">{_esc(s['name'])}</div>
+<div class="lc">{listeners} listening</div>
+<div class="url">{_esc(s['url'])}</div>
+</div>
+<div class="acts">{action}</div>
+</div>""")
+
+    banner = ""
+    if err:
+        banner = f'<div class="msg err">{_esc(err)}</div>'
+    elif msg:
+        banner = f'<div class="msg ok">{_esc(msg)}</div>'
+
+    body = "".join(rows) if rows else '<p class="hint">No live streams right now.</p>'
+    return f"""
+<h1>Browse Locusonus</h1>
+<p><a class="back" href="/">&larr; Back to stations</a>&nbsp;&nbsp;<a class="back" href="/browse?refresh=1">Refresh</a></p>
+{banner}
+<p class="hint">{len(streams)} live streams. Coordinates are auto-filled from the place name; adjust them after adding if needed.</p>
+{body}
+"""
 
 
 # ── 폼 파싱 / 스테이션 빌드 ──────────────────────────────────────────
@@ -257,6 +306,48 @@ def _geocode(query: str, api_key: str):
     parts = [top.get("name", ""), top.get("state", ""), top.get("country", "")]
     label = ", ".join(p for p in parts if p)
     return round(float(top["lat"]), 6), round(float(top["lon"]), 6), label
+
+
+def _normalize_locus_url(listenurl: str) -> str:
+    """Icecast listenurl에서 mount(basename)만 떼어 공개 https(9443) 형식으로 통일.
+    기본 스테이션들이 쓰는, Pi에서 검증된 형식과 동일하게 맞춘다."""
+    try:
+        mount = urlparse(listenurl).path.strip("/")
+    except Exception:
+        return ""
+    if not mount or not mount.lower().endswith((".mp3", ".ogg")):
+        return ""
+    return f"{LOCUS_BASE}/{mount}"
+
+
+def _fetch_locusonus(force: bool = False):
+    """라이브 스트림 목록 [{name, url, listeners}] + error. 5분 캐시.
+    실패 시 직전 캐시를 유지하고 에러 메시지를 함께 반환."""
+    now = time.time()
+    if not force and _locus_cache["data"] and (now - _locus_cache["t"]) < LOCUS_TTL:
+        return _locus_cache["data"], None
+    try:
+        import requests
+        r = requests.get(LOCUS_STATUS_URL, timeout=10)
+        r.raise_for_status()
+        sources = r.json().get("icestats", {}).get("source", [])
+        if isinstance(sources, dict):    # 소스가 1개면 Icecast가 dict로 반환
+            sources = [sources]
+        out, seen = [], set()
+        for s in sources:
+            url = _normalize_locus_url(s.get("listenurl") or s.get("server_url") or "")
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            name = (s.get("server_name") or "").strip() or url.rsplit("/", 1)[-1]
+            out.append({"name": name, "url": url, "listeners": s.get("listeners", 0)})
+        out.sort(key=lambda x: x["name"].lower())
+        _locus_cache["data"] = out
+        _locus_cache["t"] = now
+        return out, None
+    except Exception as e:
+        print(f"⚠️  Locusonus 목록 가져오기 실패: {e}")
+        return _locus_cache["data"], "Could not reach the Locusonus server."
 
 
 # 지명 입력 + 좌표 자동조회 버튼 (추가/편집 폼 공용). 수동 lat/lon 입력은 그대로 둔다.
@@ -372,6 +463,12 @@ def _make_handler(state):
             elif parsed.path == "/geocode":
                 qs = parse_qs(parsed.query)
                 self._handle_geocode(qs.get("q", [""])[0].strip())
+            elif parsed.path == "/browse":
+                qs = parse_qs(parsed.query)
+                streams, err = _fetch_locusonus(force=bool(qs.get("refresh")))
+                existing = {s.get("url") for s in self._stations()}
+                self._html(_browse_page(streams, existing,
+                                        msg=qs.get("msg", [""])[0], err=err))
             else:
                 self._redirect("/")
 
@@ -407,6 +504,8 @@ def _make_handler(state):
                 self._handle_delete(params)
             elif path == "/move":
                 self._handle_move(params)
+            elif path == "/add_locusonus":
+                self._handle_add_locusonus(params)
             else:
                 self._redirect("/")
 
@@ -467,6 +566,42 @@ def _make_handler(state):
                 stations[i], stations[j] = stations[j], stations[i]
                 self._commit(stations)
             self._redirect("/")
+
+        def _handle_add_locusonus(self, params):
+            url = _field(params, "url")
+            name = _field(params, "name")
+            if not url:
+                self._redirect("/browse?err=Missing+stream")
+                return
+            stations = self._stations()
+            if any(s.get("url") == url for s in stations):
+                self._redirect("/browse?msg=Already+added")
+                return
+            # server_name의 장소명 부분("London - Stave Hill" → "London")을 지오코딩
+            city = re.split(r"\s+[-–]\s+", name, maxsplit=1)[0].strip() or name
+            geo = None
+            api_key = getattr(state, "openweather_api_key", "") or ""
+            if api_key:
+                try:
+                    geo = _geocode(city, api_key)
+                except Exception:
+                    geo = None
+            if geo:
+                lat, lon, label = geo
+                st = {"name": name, "url": url, "location": label,
+                      "lat": str(lat), "lon": str(lon), "color": None}
+                ok, _err = config.validate_station(st)
+                if ok:
+                    stations.append(_finalize_station(st))
+                    self._commit(stations)
+                    self._redirect("/browse?msg=Added")
+                    return
+            # 좌표 자동조회 실패 → 수동 입력 폼으로 (name/url/location 채워서)
+            prefill = {"name": name, "url": url, "location": city}
+            self._html(_station_form(
+                "/add", st=prefill,
+                error=f"Couldn't find coordinates for '{city}'. "
+                      "Enter them manually or use Look up."))
 
         def log_message(self, *args):
             pass
