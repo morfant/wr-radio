@@ -47,6 +47,9 @@ class AppState:
     pending_play: bool = False
     last_station_change_time: float = 0.0
 
+    # 웹 관리에서 스테이션 목록이 바뀌면 True. 메인 루프가 안전한 시점에 reload 후 클리어.
+    stations_dirty: bool = False
+
     # input bookkeeping
     last_input_time: float = 0.0
     last_updated_index: int = -1

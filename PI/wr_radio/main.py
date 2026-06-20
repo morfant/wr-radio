@@ -12,6 +12,7 @@ import spidev
 from PIL import Image
 
 from .state import AppState
+from . import config
 from .config import setup_config_interactive, save_settings
 from . import player
 from . import weather
@@ -20,6 +21,7 @@ from .input import InputConfig, ButtonState, read_rotary, handle_button
 from .battery import BatteryMonitor
 from . import bluetooth
 from . import wifi
+from . import webadmin
 
 LOCK_FILE = "/tmp/wr_radio.lock"
 
@@ -35,11 +37,12 @@ PIN_BL = 12
 
 # 시스템 메뉴 항목
 SYSTEM_MENU_ITEMS = [
-    {"label": "Brightness", "action": "brightness"},
-    {"label": "Bluetooth",  "action": "bluetooth"},
-    {"label": "WiFi Setup", "action": "wifi_setup"},
-    {"label": "Power Off",  "action": "shutdown"},
-    {"label": "Back",       "action": "back"},
+    {"label": "Brightness",       "action": "brightness"},
+    {"label": "Bluetooth",        "action": "bluetooth"},
+    {"label": "Manage Stations",  "action": "station_admin"},
+    {"label": "WiFi Setup",       "action": "wifi_setup"},
+    {"label": "Power Off",        "action": "shutdown"},
+    {"label": "Back",             "action": "back"},
 ]
 
 # 폰트 경로
@@ -174,6 +177,80 @@ def return_to_normal(state: AppState, gpio_pins: dict, radio_stations: list, cur
     wd = weather.get_cached_weather(state, radio_stations[current_index]["lat"], radio_stations[current_index]["lon"])
     display.display_radio_info(GPIO, {"CS": gpio_pins["CS"], "DC": gpio_pins["DC"]}, state, weather_data=wd, force_full=True)
     state.last_displayed_weather = wd
+
+
+def reload_stations(state: AppState, pins: dict):
+    """웹 관리로 변경된 config.json을 메인 스레드에서 안전하게 반영.
+    state.radio_stations / current_index는 오직 여기(메인 스레드)서만 수정된다."""
+    state.stations_dirty = False   # 먼저 끔: reload 중 들어온 추가 변경은 다음 루프가 처리
+    new = config.load_config()
+    if not new or not new.get("stations"):
+        return
+    stations = config.normalize_stations(new["stations"])
+
+    playing_url = None
+    if state.is_playing and 0 <= state.current_index < len(state.radio_stations):
+        playing_url = state.radio_stations[state.current_index].get("url")
+
+    state.radio_stations = stations
+
+    if playing_url is not None:
+        # 재생 중이던 스테이션을 url로 추적 → 앞 항목 삭제/순서변경에도 끊김 없음
+        match = next((k for k, s in enumerate(stations)
+                      if s.get("url") == playing_url), None)
+        if match is not None:
+            state.current_index = match
+        else:
+            # 재생 중이던 스테이션이 삭제/URL변경됨 → 클램프 후 새 스테이션 재생
+            state.current_index = max(0, min(state.current_index, len(stations) - 1))
+            state.pending_play = True
+            state.last_station_change_time = time.time()
+    else:
+        state.current_index = max(0, min(state.current_index, len(stations) - 1))
+
+    # 화면/날씨 캐시 강제 리프레시
+    state.last_displayed_index = -1
+    state.last_updated_index = -1
+    state.last_displayed_weather = None
+    if state.current_mode == "normal":
+        return_to_normal(state, pins, state.radio_stations, state.current_index)
+    print(f"📻 스테이션 목록 갱신: {len(stations)}개 (현재 {state.current_index + 1})")
+
+
+def get_admin_url() -> str:
+    """관리 페이지 접속 URL. mDNS 호스트명(<host>.local) 우선, 실패 시 라우팅 IP."""
+    import socket
+    try:
+        host = socket.gethostname()
+        if host:
+            return f"{host}.local:{webadmin.PORT}"
+    except Exception:
+        pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return f"{ip}:{webadmin.PORT}"
+    except Exception:
+        return f"localhost:{webadmin.PORT}"
+
+
+def show_station_admin(state: AppState, pins: dict):
+    """LCD에 관리 페이지 URL을 표시하고 노브를 누르면 종료.
+    웹서버는 상시 동작하므로 이 화면은 단순히 주소 안내용이다."""
+    url = get_admin_url()
+    print(f"🌐 Manage Stations: http://{url}")
+    display.display_station_admin_url(GPIO, pins, state, url)
+    key_pin = pins["KEY"]
+    # 진입 시 메뉴 선택 버튼이 떼어질 때까지 대기 (잔류 입력 무시)
+    while GPIO.input(key_pin) == 0:
+        time.sleep(0.02)
+    # 다음 누름 대기 → 떼임 대기 후 종료
+    while GPIO.input(key_pin) == 1:
+        time.sleep(0.02)
+    while GPIO.input(key_pin) == 0:
+        time.sleep(0.02)
 
 
 def do_shutdown(state: AppState, gpio_pins: dict):
@@ -690,6 +767,9 @@ def main():
 
     weather.start_weather_update(state, state.current_index)
 
+    # 상시 동작 스테이션 관리 웹서버 (홈 WiFi, 포트 8080)
+    admin_server = webadmin.start_server(state)
+
     input_cfg = InputConfig(
         rotation_debounce_sec=0.02,
         play_switch_delay_sec=0.40,
@@ -729,6 +809,10 @@ def main():
     try:
         while True:
             now = time.time()
+
+            # 웹 관리에서 스테이션 목록이 바뀌면 안전한 시점에 reload
+            if state.stations_dirty:
+                reload_stations(state, pins)
 
             # volume 모드 타임아웃 → normal 복귀
             if (
@@ -854,6 +938,12 @@ def main():
                     img = draw_brightness_menu(state)
                     display.display_image(GPIO, {"CS": PIN_CS, "DC": PIN_DC}, state, img)
 
+                elif action == "station_admin":
+                    show_station_admin(state, pins)
+                    state.current_mode = "normal"
+                    menu_index = 0
+                    return_to_normal(state, pins, state.radio_stations, state.current_index)
+
                 elif action == "wifi_setup":
                     was_playing = state.is_playing
                     player.stop_playback(state)
@@ -959,6 +1049,13 @@ def main():
 
     finally:
         print("\n정리 중...")
+
+        if admin_server is not None:
+            try:
+                admin_server.shutdown()
+                admin_server.server_close()
+            except Exception:
+                pass
 
         player.shutdown_player(state)
 

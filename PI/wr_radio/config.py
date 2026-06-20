@@ -1,9 +1,14 @@
 import json
 import math
 import os
-from typing import Any, Dict, List, Optional
+import tempfile
+import threading
+from typing import Any, Dict, List, Optional, Tuple
 
 CONFIG_FILE = "/home/wr-radio/wr-radio/config.json"
+
+# config 파일 read-modify-write 직렬화 (메인 루프 save_settings vs 웹 스레드 스테이션 저장)
+_config_lock = threading.Lock()
 
 # 주요 타임존 대표 좌표 (위도, 경도, 타임존)
 TIMEZONE_LOOKUP = [
@@ -121,6 +126,22 @@ def find_timezone(lat: float, lon: float) -> str:
     return best_tz
 
 
+def normalize_stations(stations: List[Dict[str, Any]], verbose: bool = False) -> List[Dict[str, Any]]:
+    """color를 tuple로, timezone을 lat/lon에서 자동 채움.
+    부팅 초기화와 웹 reload 양쪽에서 재사용 (in-place 수정 후 같은 리스트 반환)."""
+    for st in stations:
+        if isinstance(st.get("color"), list):
+            st["color"] = tuple(st["color"])
+        elif "color" not in st:
+            st["color"] = (100, 200, 255)
+
+        if "timezone" not in st or not st["timezone"]:
+            st["timezone"] = find_timezone(st["lat"], st["lon"])
+            if verbose:
+                print(f"🌍 {st['name']}: {st['timezone']}")
+    return stations
+
+
 def load_config() -> Optional[Dict[str, Any]]:
     if os.path.exists(CONFIG_FILE):
         try:
@@ -132,10 +153,25 @@ def load_config() -> Optional[Dict[str, Any]]:
 
 
 def save_config(config: Dict[str, Any]) -> bool:
+    """원자적 저장: 같은 디렉터리에 임시파일 작성 후 os.replace로 교체.
+    쓰기 도중 크래시해도 기존 파일이 손상되지 않는다."""
     try:
-        os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        cfg_dir = os.path.dirname(CONFIG_FILE)
+        os.makedirs(cfg_dir, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=cfg_dir, prefix=".config.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, CONFIG_FILE)
+        except Exception:
+            # 임시파일 정리 후 재전파
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
         return True
     except Exception as e:
         print(f"❌ 설정 저장 실패: {e}")
@@ -200,30 +236,77 @@ def setup_config_interactive() -> Optional[Dict[str, Any]]:
     # 검증/정규화
     if "stations" not in config or not config["stations"]:
         print("⚠️  스테이션 목록이 비어있습니다. 기본 목록 사용")
-        config["stations"] = DEFAULT_STATIONS
+        config["stations"] = [dict(s) for s in DEFAULT_STATIONS]
 
-    for st in config["stations"]:
-        if isinstance(st.get("color"), list):
-            st["color"] = tuple(st["color"])
-        elif "color" not in st:
-            st["color"] = (100, 200, 255)
-        
-        # timezone 자동 찾기
-        if "timezone" not in st or not st["timezone"]:
-            st["timezone"] = find_timezone(st["lat"], st["lon"])
-            print(f"🌍 {st['name']}: {st['timezone']}")
+    config["stations"] = normalize_stations(config["stations"], verbose=True)
 
     return config
 
 
 def save_settings(index: int, volume: int, brightness: int) -> None:
     try:
-        config = load_config()
-        if config:
-            config["last_station"] = index
-            config["last_volume"] = volume
-            config["last_brightness"] = brightness
-            save_config(config)
-            print(f"💾 저장 완료 (스테이션:{index+1}, 볼륨:{volume}%, 밝기:{brightness}%)")
+        with _config_lock:
+            config = load_config()
+            if config:
+                config["last_station"] = index
+                config["last_volume"] = volume
+                config["last_brightness"] = brightness
+                save_config(config)
+                print(f"💾 저장 완료 (스테이션:{index+1}, 볼륨:{volume}%, 밝기:{brightness}%)")
     except Exception as e:
         print(f"저장 실패: {e}")
+
+
+def update_stations(stations: List[Dict[str, Any]]) -> bool:
+    """스테이션 목록만 교체 저장. 웹 관리 스레드가 호출.
+    save_settings와 같은 락을 공유해 config 파일 동시 수정 경쟁을 막는다."""
+    try:
+        with _config_lock:
+            config = load_config()
+            if config is None:
+                return False
+            config["stations"] = stations
+            # last_station이 범위를 벗어나면 클램프 (메인 루프도 클램프하지만 파일도 일관되게)
+            n = len(stations)
+            if n and not (0 <= config.get("last_station", 0) < n):
+                config["last_station"] = max(0, min(config.get("last_station", 0), n - 1))
+            return save_config(config)
+    except Exception as e:
+        print(f"❌ 스테이션 저장 실패: {e}")
+        return False
+
+
+def validate_station(d: Dict[str, Any]) -> Tuple[bool, str]:
+    """추가/편집 폼 입력 검증. color는 빈값이면 기본색으로 채워진다고 가정(웹 핸들러에서)."""
+    name = str(d.get("name", "")).strip()
+    if not name:
+        return False, "Name is required."
+
+    url = str(d.get("url", "")).strip()
+    if not url.startswith("http"):
+        return False, "URL must start with http:// or https://"
+
+    try:
+        lat = float(d["lat"])
+    except (KeyError, TypeError, ValueError):
+        return False, "Latitude must be a number."
+    if not (-90.0 <= lat <= 90.0):
+        return False, "Latitude must be between -90 and 90."
+
+    try:
+        lon = float(d["lon"])
+    except (KeyError, TypeError, ValueError):
+        return False, "Longitude must be a number."
+    if not (-180.0 <= lon <= 180.0):
+        return False, "Longitude must be between -180 and 180."
+
+    color = d.get("color")
+    if color is not None:
+        try:
+            rgb = [int(c) for c in color]
+        except (TypeError, ValueError):
+            return False, "Color must be three numbers 0-255."
+        if len(rgb) != 3 or not all(0 <= c <= 255 for c in rgb):
+            return False, "Color must be three numbers 0-255."
+
+    return True, ""

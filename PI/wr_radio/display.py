@@ -578,3 +578,19 @@ def display_provisioning_failed(GPIO, pins, state):
     draw.text((120, 90),  "Failed",        font=font_bold, fill=(220, 80, 80),   anchor="mm")
     draw.text((120, 130), "Retrying...",   font=font_reg,  fill=(140, 140, 160), anchor="mm")
     display_image(GPIO, pins, state, img)
+
+
+def display_station_admin_url(GPIO, pins, state, url: str):
+    """스테이션 관리 페이지 접속 안내 화면. url은 host:port (예: wr-radio-zero.local:8080)."""
+    font_bold, font_reg = _prov_fonts()
+    img  = Image.new("RGB", (240, 240), (0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    draw.text((120, 22),  "Manage Stations", font=font_bold, fill=(255, 255, 255), anchor="mm")
+    draw.line([(20, 42), (220, 42)],          fill=(40, 40, 60), width=1)
+    draw.text((120, 85),  "Open in browser:", font=font_reg,  fill=(140, 140, 160), anchor="mm")
+    draw.text((120, 118), url,                font=font_reg,  fill=(100, 200, 255), anchor="mm")
+    draw.text((120, 165), "Add, edit, reorder", font=font_reg, fill=(180, 220, 180), anchor="mm")
+    draw.text((120, 220), "Press knob to exit", font=font_reg, fill=(255, 180, 80), anchor="mm")
+
+    display_image(GPIO, pins, state, img)
