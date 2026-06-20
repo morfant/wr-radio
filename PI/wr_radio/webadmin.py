@@ -7,6 +7,7 @@ state.stations_dirty = True 만 세운다. 메인 루프가 안전한 시점에 
 wifi.py의 stdlib http.server 패턴을 차용."""
 
 import html
+import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -42,6 +43,9 @@ input{width:100%;padding:9px;background:#222;border:1px solid #444;color:#eee;bo
 .row>div{flex:1}
 button.primary{width:100%;padding:12px;margin-top:18px;background:#27a;border:none;color:#fff;border-radius:6px;font-size:1.02em;cursor:pointer}
 button.primary:hover{background:#38b}
+button.lookup{width:100%;padding:9px;background:#444;border:1px solid #555;color:#cde;border-radius:6px;font-size:.95em;cursor:pointer}
+button.lookup:hover{background:#555}
+.geo{font-size:.78em;color:#9bf;min-height:1.1em;margin-top:4px}
 a.back{color:#7af;font-size:.9em}
 """
 
@@ -103,6 +107,7 @@ def _station_form(action: str, st=None, index=None, error="") -> str:
 <input name="url" value="{url}" placeholder="https://..." required>
 <label>Location</label>
 <input name="location" value="{loc}" placeholder="City, Country">
+{_PLACE_BLOCK}
 <div class="row">
 <div><label>Latitude</label><input name="lat" value="{lat}" placeholder="-90 ~ 90" required></div>
 <div><label>Longitude</label><input name="lon" value="{lon}" placeholder="-180 ~ 180" required></div>
@@ -116,7 +121,7 @@ def _station_form(action: str, st=None, index=None, error="") -> str:
 <button class="primary" type="submit">Save</button>
 </form>
 <p><a class="back" href="/">&larr; Back to list</a></p>
-"""
+""" + _GEO_SCRIPT
 
 
 def _list_page(stations, msg="", err="") -> str:
@@ -171,6 +176,7 @@ def _list_page(stations, msg="", err="") -> str:
 <input name="url" placeholder="https://..." required>
 <label>Location</label>
 <input name="location" placeholder="City, Country">
+{_PLACE_BLOCK}
 <div class="row">
 <div><label>Latitude</label><input name="lat" placeholder="-90 ~ 90" required></div>
 <div><label>Longitude</label><input name="lon" placeholder="-180 ~ 180" required></div>
@@ -183,7 +189,7 @@ def _list_page(stations, msg="", err="") -> str:
 </div>
 <button class="primary" type="submit">Add station</button>
 </form>
-"""
+""" + _GEO_SCRIPT
 
 
 # ── 폼 파싱 / 스테이션 빌드 ──────────────────────────────────────────
@@ -203,6 +209,55 @@ def _build_station(params):
         "lon": _field(params, "lon"),
         "color": color,
     }
+
+
+def _geocode(query: str, api_key: str):
+    """OpenWeatherMap Geocoding API로 지명 → (lat, lon, label). 없으면 None."""
+    import requests  # weather.py와 동일 의존성; import 실패 회피 위해 지연 로드
+    r = requests.get(
+        "https://api.openweathermap.org/geo/1.0/direct",
+        params={"q": query, "limit": 1, "appid": api_key},
+        timeout=8,
+    )
+    r.raise_for_status()
+    data = r.json()
+    if not data:
+        return None
+    top = data[0]
+    parts = [top.get("name", ""), top.get("state", ""), top.get("country", "")]
+    label = ", ".join(p for p in parts if p)
+    return round(float(top["lat"]), 6), round(float(top["lon"]), 6), label
+
+
+# 지명 입력 + 좌표 자동조회 버튼 (추가/편집 폼 공용). 수동 lat/lon 입력은 그대로 둔다.
+_PLACE_BLOCK = """
+<label>Place name (optional &mdash; fills coordinates below)</label>
+<div class="row">
+<div style="flex:2"><input id="place" placeholder="e.g. London, GB"></div>
+<div style="flex:1"><button type="button" class="lookup" onclick="geocode()">Look up</button></div>
+</div>
+<div id="geo_status" class="geo"></div>
+"""
+
+_GEO_SCRIPT = """
+<script>
+function geocode(){
+  var q=document.getElementById('place').value.trim();
+  var s=document.getElementById('geo_status');
+  if(!q){s.textContent='Enter a place name first.';return;}
+  s.textContent='Looking up...';
+  fetch('/geocode?q='+encodeURIComponent(q)).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){
+      document.getElementsByName('lat')[0].value=d.lat;
+      document.getElementsByName('lon')[0].value=d.lon;
+      var loc=document.getElementsByName('location')[0];
+      if(loc&&!loc.value){loc.value=d.label;}
+      s.textContent='Found: '+d.label+' ('+d.lat+', '+d.lon+')';
+    }else{s.textContent=d.error||'Not found.';}
+  }).catch(function(){s.textContent='Lookup failed.';});
+}
+</script>
+"""
 
 
 def _finalize_station(st):
@@ -241,6 +296,14 @@ def _make_handler(state):
             self.send_header("Content-Length", "0")
             self.end_headers()
 
+        def _json(self, obj, code=200):
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
         def _read_params(self):
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8", errors="replace")
@@ -276,8 +339,31 @@ def _make_handler(state):
                     self._html(_station_form("/edit", st=stations[i], index=i))
                 else:
                     self._redirect("/?err=Station+not+found")
+            elif parsed.path == "/geocode":
+                qs = parse_qs(parsed.query)
+                self._handle_geocode(qs.get("q", [""])[0].strip())
             else:
                 self._redirect("/")
+
+        def _handle_geocode(self, query):
+            api_key = getattr(state, "openweather_api_key", "") or ""
+            if not api_key:
+                self._json({"ok": False,
+                            "error": "Weather API key not set; enter coordinates manually."})
+                return
+            if not query:
+                self._json({"ok": False, "error": "Enter a place name."})
+                return
+            try:
+                res = _geocode(query, api_key)
+            except Exception:
+                self._json({"ok": False, "error": "Lookup failed."})
+                return
+            if not res:
+                self._json({"ok": False, "error": "Place not found."})
+                return
+            lat, lon, label = res
+            self._json({"ok": True, "lat": lat, "lon": lon, "label": label})
 
         # ---- POST ----
         def do_POST(self):
