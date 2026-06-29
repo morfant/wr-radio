@@ -1,0 +1,24 @@
+{
+    "Header": {
+        "Comment": "All values are metric (mm)",
+        "CreationDate": "2026-06-06T01:50:02Z",
+        "GenerationSoftware": {
+            "Application": "Fusion Electronics",
+            "Vendor": "Autodesk",
+            "Version": "9.7.0"
+        },
+        "Part": "Single"
+    },
+    "Overall": {
+        "BoardThickness": 1.6608,
+        "LayerNumber": 2,
+        "Name": {
+            "ProjectId": "audio-jack-board"
+        },
+        "Owner": "gangil lee <morpain@karts.ac.kr>",
+        "Size": {
+            "X": 114.45,
+            "Y": 80.2
+        }
+    }
+}

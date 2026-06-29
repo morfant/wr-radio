@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 WR-Radio is a portable internet radio (Raspberry Pi Zero 2W) that streams ambient sounds from locations worldwide. The repository has three parts: `PI/` (Python application), `PCB/` (Eagle CAD schematic/layout), and `Case/` (OpenSCAD parametric case).
 
-All active software development happens in `PI/`.
+All active software development happens in `PI/`. Case design is in `Case/`.
 
 ## Running the Application
 
@@ -144,6 +144,48 @@ Key details and the bugs they fix (all hard-won — do not regress):
 - `y=68~86`: 시간 텍스트만 (1분마다 `display_time_only()`)
 - `y=125~165`: 애니메이션 (재생 중 사인파, 로딩 중 점)
 - `y=168~239`: 스테이션 번호 + 버튼 힌트
+
+## Case Design (Case/)
+
+케이스 작업은 **Fusion 360**에서 진행한다. Claude는 치수/DXF/STEP을 공급하고 Fusion 조작은 사용자가 직접 한다.
+
+### 파일
+
+- `Case/wr_radio_base.scad` — OpenSCAD 파라메트릭 소스 (렌더 검증용, CLI: `openscad -o out.stl -D 'show_part="base"' wr_radio_base.scad`)
+- `Case/wr_radio_base.dxf` — Fusion import용 스케치 (HAT/Pi 외곽선 + 홀 중심)
+- STEP 내보내기: CadQuery 2.7.0 설치됨 (`python3 -c "import cadquery"` 확인) — 다음 작업 시 STEP 생성
+
+### 하드웨어 배치
+
+Pi Zero 2W와 radio-hat-v07 PCB는 **적층이 아닌 나란히** 배치. 90° 라이트앵글 2×20 헤더로 연결. HAT의 J1(GPIO)이 좌측 가장자리에 있어 **Pi는 HAT 왼쪽**.
+
+### 확정 치수 (거버 + 실측)
+
+| 항목 | 값 |
+|------|-----|
+| HAT 보드 | 63.48 × 69.98 mm |
+| Pi Zero 2W | 65 × 30 mm |
+| `pi_gap` (두 보드 사이 간격) | **7.45 mm** (실측: 하단 7.3 / 상단 7.6) |
+| `pi_y_offset` (Pi 세로 정렬) | **1.75 mm** (Fusion 시각 검증 완료) |
+
+### 보스 스펙 (M2.5 마운팅, 9개)
+
+- 외경 Ø5.5 mm, 높이 4 mm (플레이트 윗면 기준)
+- 파일럿 구멍: Ø2.1 mm, 깊이 6 mm, Blind (Fusion: Distance)
+- Hole 설정: Simple / No Tap / Flat / Distance 6mm
+- 권장 나사: M2.5 × 5~6 mm 셀프태핑
+
+### STL vs STEP
+
+- STL → Fusion에서 메시 바디로 열림, 편집 불가
+- **STEP → 솔리드로 열림, 이후 작업 가능**
+- `Case/wr_radio_base.step` — CadQuery 2.7.0으로 생성 완료. 베이스 플레이트 + 보스 9개 + 파일럿 구멍 포함. Fusion에서 솔리드로 열림 확인.
+
+### 현재 Fusion 작업 상태 (2026-06-21)
+
+- 새 Fusion 디자인에 STEP + Pi STEP + HAT 3D PCB 올려서 보스/헤더핀 정렬 시각 검증 완료
+- 벽 올림 완료
+- **다음 작업**: 벽 형태 결정 — 측면에서 봤을 때 상부가 좁아지는 테이퍼 형태 원함 (균일 taper vs 쐐기(wedge) 형태 미결정). Fusion에서 `Modify → Draft` 또는 Extrude Taper Angle로 구현 예정
 
 ## Pi 연결 및 배포
 

@@ -1,0 +1,5 @@
+Partlist exported from Fusion Hub: 201 Personal   Project: wr-radio  Board: audio-jack-board at 6/6/26 10:50 AM
+
+Qty Value                Device               Package    Parts                                                                                          Description                                                                                                     PROD_ID    SF_ID    
+20                       CONN_05PTH           1X05       J2, J4, J6, J8, J10, J12, J14, J16, J18, J20, J22, J24, J26, J28, J30, J32, J34, J36, J38, J40 Multi connection point. Often used as Generic Header-pin footprint for 0.1 inch spaced/style header connections                     
+20  AUDIO_JACK_3.5MM_PTH AUDIO_JACK_3.5MM_PTH AUDIO-JACK J1, J3, J5, J7, J9, J11, J13, J15, J17, J19, J21, J23, J25, J27, J29, J31, J33, J35, J37, J39  Audio Jack                                                                                                      CONN-08774 PRT-08032
