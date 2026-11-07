@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "radio-hat-v08") (type "KiCad") (uri "${KIPRJMOD}/radio-hat-v08.pretty") (options "") (descr "wr-radio HAT v08 custom footprints (PJ-307C jack, Pi-side 2x20 header)"))
+)

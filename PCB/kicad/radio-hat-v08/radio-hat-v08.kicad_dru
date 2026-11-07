@@ -1,0 +1,29 @@
+(version 1)
+# JLCPCB 2-layer, 1.6 mm, 1 oz rules for wr-radio HAT v08
+
+(rule "JLC min track width"
+	(constraint track_width (min 0.15mm)))
+
+(rule "JLC min clearance"
+	(constraint clearance (min 0.15mm)))
+
+(rule "JLC via drill"
+	(condition "A.Type == 'via'")
+	(constraint hole_size (min 0.3mm)))
+
+(rule "JLC via diameter"
+	(condition "A.Type == 'via'")
+	(constraint via_diameter (min 0.6mm)))
+
+(rule "JLC via annular ring"
+	(condition "A.Type == 'via'")
+	(constraint annular_width (min 0.15mm)))
+
+(rule "JLC hole to hole"
+	(constraint hole_to_hole (min 0.5mm)))
+
+(rule "JLC copper to edge"
+	(constraint edge_clearance (min 0.3mm)))
+
+(rule "JLC silk to pad"
+	(constraint silk_clearance (min 0.15mm)))

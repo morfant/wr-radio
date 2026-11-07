@@ -1,0 +1,4 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "radio-hat-v08") (type "KiCad") (uri "${KIPRJMOD}/radio-hat-v08.kicad_sym") (options "") (descr "wr-radio HAT v08 custom symbols (TPS61023, WSP8814, PJ-307C)"))
+)
