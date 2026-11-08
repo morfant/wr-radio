@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WR-Radio 케이스 3D</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#eef0f3;font-family:system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;color:#222}
+#bar{position:fixed;top:0;left:0;right:0;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:rgba(255,255,255,.88);z-index:5;border-bottom:1px solid #ccd}
+button{font:inherit;padding:5px 11px;border:1px solid #889;border-radius:6px;background:#fff;cursor:pointer}
+button.on{background:#2d4a7a;color:#fff;border-color:#2d4a7a}
+label.t{margin-left:8px;font-size:14px;user-select:none}
+#info{position:fixed;left:12px;bottom:12px;background:rgba(255,255,255,.9);border:1px solid #ccd;border-radius:8px;padding:8px 12px;font-size:13px;max-width:300px;z-index:5;line-height:1.5}
+#legend div{display:flex;align-items:center;gap:6px}
+#legend i{width:12px;height:12px;border:1px solid #333;display:inline-block}
+#tip{position:fixed;pointer-events:none;background:#222;color:#fff;font-size:12px;padding:3px 7px;border-radius:4px;display:none;z-index:9}
+.lab{font-size:12px;font-weight:600;color:#c00;background:rgba(255,255,255,.85);padding:1px 5px;border-radius:3px;border:1px solid #e99;white-space:nowrap}
+.dim{font-size:13px;font-weight:700;color:#124;background:rgba(255,255,255,.85);padding:2px 7px;border-radius:4px;white-space:nowrap}
+.front{font-size:13px;font-weight:700;color:#fff;background:#2d4a7a;padding:2px 8px;border-radius:4px;white-space:nowrap}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+"three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script></head>
+<body>
+<div id="bar"></div>
+<div id="info"><div id="dims"></div><div id="legend"></div><div style="color:#666;margin-top:4px">드래그: 회전 · 스크롤: 확대 · 우클릭 드래그: 이동</div></div>
+<div id="tip"></div>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {CSS2DRenderer, CSS2DObject} from 'three/addons/renderers/CSS2DRenderer.js';
+const DATA = [{"key": "A", "title": "A. 가로 탁상형", "inner": [122.0, 71.0, 96.0], "outer": [128.0, 102.0, 77.0], "parts": [{"name": "배터리 90×52×12", "col": "#edc948", "shape": "box", "axis": null, "box": [26, 116, 9.5, 61.5, 0, 12], "dashed": false, "alpha": null}, {"name": "Pi Zero", "col": "#8cd17d", "shape": "box", "axis": null, "box": [20.5, 50.5, 3, 68, 12, 27], "dashed": false, "alpha": null}, {"name": "HAT 63.5×70", "col": "#76b7b2", "shape": "box", "axis": null, "box": [58.0, 121.5, 0.5, 70.5, 12, 27], "dashed": false, "alpha": null}, {"name": "스피커 66×66", "col": "#f28e2b", "shape": "box", "axis": null, "box": [0, 66, 0, 27, 30, 96], "dashed": false, "alpha": null}, {"name": "챔버16 유닛27", "col": "#fbc78c", "shape": "box", "axis": null, "box": [0, 66, 27, 43, 30, 96], "dashed": false, "alpha": null}, {"name": "LCD 50×35.5", "col": "#4e79a7", "shape": "box", "axis": null, "box": [69, 119, 0, 8, 45.25, 80.75], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [119, 121.5, 3.2, 4.0, 53, 73], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [120.7, 121.5, 4.0, 23.2, 53, 73], "dashed": false, "alpha": null}, {"name": "엔코더 ø26×30", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [81.0, 107.0, 11.0, 37.0, 66, 96], "dashed": false, "alpha": null}, {"name": "노브ø27", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [80.5, 107.5, 10.5, 37.5, 99, 124], "dashed": true, "alpha": null}, {"name": "스위치 13×7×20", "col": "#b07aa1", "shape": "box", "axis": null, "box": [60, 73, 51, 71, 28, 35], "dashed": false, "alpha": null}, {"name": "bushing", "col": "#b07aa1", "shape": "cyl", "axis": "y", "box": [63.435, 69.565, 74, 80, 28.435, 34.565], "dashed": true, "alpha": null}], "openings": [{"name": "USB-C 충전", "kind": "rect", "box": [93.5, 102.5, 71.0, 74.0, 17.5, 21.5], "axis": null, "label": true}, {"name": "이어폰 잭", "kind": "rect", "box": [122.0, 125.0, 32.5, 38.5, 16.5, 22.5], "axis": null, "label": true}, {"name": "전원 스위치", "kind": "rect", "box": [63.43, 69.57, 71.0, 74.0, 28.43, 34.57], "axis": null, "label": true}, {"name": "LCD 창", "kind": "rect", "box": [76.2, 111.8, -3.0, 0, 46.85, 79.15], "axis": null, "label": true}, {"name": "스피커 그릴", "kind": "disc", "box": [10.600000000000001, 55.4, -3.0, 0, 40.6, 85.4], "axis": "y", "label": true}, {"name": "엔코더", "kind": "rect", "box": [80.5, 107.5, 10.5, 37.5, 96.0, 99.0], "axis": null, "label": true}], "note": "LCD 플렉스: 우측(+X)으로 나와 3mm 틈에서 뒤(+Y)로 꺾임 / LCD 가로 50×35.5. 노브 +25 (높이 방향), 스위치 부싱 +6 (뒤)", "notes": [], "labels": []}, {"key": "A2", "title": "A2. 가로 탁상형 (보드 세움)", "inner": [122.0, 61.5, 85.5], "outer": [128.0, 91.5, 67.5], "parts": [{"name": "배터리 90×52×12", "col": "#edc948", "shape": "box", "axis": null, "box": [16, 106, 9.5, 61.5, 0, 12], "dashed": false, "alpha": null}, {"name": "Pi Zero", "col": "#8cd17d", "shape": "box", "axis": null, "box": [20.5, 50.5, 46, 61, 17.5, 82.5], "dashed": false, "alpha": null}, {"name": "HAT 63.5×70", "col": "#76b7b2", "shape": "box", "axis": null, "box": [58, 121.5, 46, 61, 15.0, 85.0], "dashed": false, "alpha": null}, {"name": "스피커 66×66", "col": "#f28e2b", "shape": "box", "axis": null, "box": [0, 66, 0, 27, 15.0, 81.0], "dashed": false, "alpha": null}, {"name": "챔버16 유닛27", "col": "#fbc78c", "shape": "box", "axis": null, "box": [0, 66, 27, 43, 15.0, 81.0], "dashed": false, "alpha": null}, {"name": "LCD 50×35.5", "col": "#4e79a7", "shape": "box", "axis": null, "box": [69, 119, 0, 8, 30.25, 65.75], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [119, 121.5, 3.2, 4.0, 38.0, 58.0], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [120.7, 121.5, 4.0, 23.2, 38.0, 58.0], "dashed": false, "alpha": null}, {"name": "엔코더 ø26×30", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [81.0, 107.0, 11.0, 37.0, 55.5, 85.5], "dashed": false, "alpha": null}, {"name": "노브ø27", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [80.5, 107.5, 10.5, 37.5, 88.5, 113.5], "dashed": true, "alpha": null}, {"name": "스위치", "col": "#b07aa1", "shape": "box", "axis": null, "box": [101.5, 121.5, 28, 41, 20, 27], "dashed": false, "alpha": null}, {"name": "bushing", "col": "#b07aa1", "shape": "cyl", "axis": "x", "box": [125.0, 131.0, 31.435, 37.565, 20.435, 26.565], "dashed": true, "alpha": null}], "openings": [{"name": "LCD 창", "kind": "rect", "box": [76.2, 111.8, -3.0, 0, 31.85, 64.15], "axis": null, "label": true}, {"name": "스피커 그릴", "kind": "disc", "box": [10.600000000000001, 55.4, -3.0, 0, 25.6, 70.4], "axis": "y", "label": true}, {"name": "엔코더(상단)", "kind": "disc", "box": [80.5, 107.5, 10.5, 37.5, 85.5, 88.5], "axis": "z", "label": true}, {"name": "USB-C 충전", "kind": "rect", "box": [122.0, 125.0, 50, 57, 45.5, 50.5], "axis": null, "label": true}, {"name": "이어폰 잭", "kind": "rect", "box": [86, 94, 49.5, 57.5, 85.5, 88.5], "axis": null, "label": true}, {"name": "전원 스위치", "kind": "rect", "box": [122.0, 125.0, 31.43, 37.57, 20.43, 26.57], "axis": null, "label": true}], "note": "LCD 플렉스: 우측(+X)으로 나와 3mm 틈에서 뒤(+Y)로 꺾임 / Pi+HAT 세움(15 두께, 뒷벽). 배터리는 스피커·보드 아래 눕힘(바닥 +15). 엔코더 상단. USB-C·스위치 우측, 이어폰 상단", "notes": [], "labels": []}, {"key": "A3", "title": "A3. 추천안 (A2 + 챔버 컵, 보드 뒤집기②)", "inner": [122.0, 64.6, 85.5], "outer": [128.0, 91.5, 70.6], "parts": [{"name": "배터리 90×52×12", "col": "#edc948", "shape": "box", "axis": null, "box": [26, 116, 3, 55, 0, 12], "dashed": false, "alpha": null}, {"name": "Pi Zero (SD 끝 위)", "col": "#8cd17d", "shape": "box", "axis": null, "box": [71.5, 101.5, 46, 47.6, 17.5, 82.5], "dashed": false, "alpha": null}, {"name": "HAT", "col": "#76b7b2", "shape": "box", "axis": null, "box": [0.5, 64, 46, 47.6, 15.0, 85.0], "dashed": false, "alpha": null}, {"name": "스피커 66×66", "col": "#f28e2b", "shape": "box", "axis": null, "box": [0, 66, 0, 27, 15.0, 81.0], "dashed": false, "alpha": null}, {"name": "챔버12 유닛27", "col": "#fbc78c", "shape": "box", "axis": null, "box": [0, 66, 27, 39, 15.0, 81.0], "dashed": false, "alpha": null}, {"name": "밀폐 챔버(컵)", "col": "#9c8a6b", "shape": "box", "axis": null, "box": [0, 68, 39, 41, 13.0, 83.0], "dashed": false, "alpha": null}, {"name": "밀폐 챔버(컵)", "col": "#9c8a6b", "shape": "box", "axis": null, "box": [0, 68, 27, 39, 81.0, 83.0], "dashed": false, "alpha": null}, {"name": "밀폐 챔버(컵)", "col": "#9c8a6b", "shape": "box", "axis": null, "box": [0, 68, 27, 39, 13.0, 15.0], "dashed": false, "alpha": null}, {"name": "밀폐 챔버(컵)", "col": "#9c8a6b", "shape": "box", "axis": null, "box": [66, 68, 27, 39, 15.0, 81.0], "dashed": false, "alpha": null}, {"name": "LCD 50×35.5", "col": "#4e79a7", "shape": "box", "axis": null, "box": [69, 119, 0, 8, 30.25, 65.75], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [119, 121.5, 3.2, 4.0, 38.0, 58.0], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [120.7, 121.5, 4.0, 23.2, 38.0, 58.0], "dashed": false, "alpha": null}, {"name": "엔코더 ø26×30", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [81.0, 107.0, 11.0, 37.0, 55.5, 85.5], "dashed": false, "alpha": null}, {"name": "노브ø27", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [80.5, 107.5, 10.5, 37.5, 88.5, 113.5], "dashed": true, "alpha": null}, {"name": "스위치", "col": "#b07aa1", "shape": "box", "axis": null, "box": [102, 122, 49.1, 62.1, 66, 73], "dashed": false, "alpha": null}, {"name": "bushing", "col": "#b07aa1", "shape": "cyl", "axis": "x", "box": [125.0, 131.0, 52.535000000000004, 58.665, 66.435, 72.565], "dashed": true, "alpha": null}, {"name": "배터리 커넥터", "col": "#d9534f", "shape": "box", "axis": null, "box": [14, 17, 47.6, 56.6, 4, 15.0], "dashed": false, "alpha": null}, {"name": "커넥터·케이블 공간 17", "col": "#a0c4ff", "shape": "box", "axis": null, "box": [0.5, 101.5, 47.6, 64.6, 15.0, 85.0], "dashed": true, "alpha": 0.2}, {"name": "납땜 리드 공간 3", "col": "#ffd6a0", "shape": "box", "axis": null, "box": [0.5, 101.5, 43, 46, 15.0, 85.0], "dashed": true, "alpha": 0.25}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [0.75, 6.25, 47.6, 64.6, 15.25, 20.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [58.25, 63.75, 47.6, 64.6, 15.25, 20.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [0.75, 6.25, 47.6, 64.6, 79.25, 84.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [58.25, 63.75, 47.6, 64.6, 79.25, 84.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [1.9500000000000002, 7.45, 47.6, 64.6, 46.45, 51.95], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [71.75, 77.25, 47.6, 64.6, 18.25, 23.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [95.75, 101.25, 47.6, 64.6, 18.25, 23.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [71.75, 77.25, 47.6, 64.6, 76.25, 81.75], "dashed": false, "alpha": null}, {"name": "스탠드오프", "col": "#7f7f7f", "shape": "cyl", "axis": "y", "box": [95.75, 101.25, 47.6, 64.6, 76.25, 81.75], "dashed": false, "alpha": null}], "openings": [{"name": "LCD 창", "kind": "rect", "box": [76.2, 111.8, -3.0, 0, 31.85, 64.15], "axis": null, "label": true}, {"name": "스피커 그릴", "kind": "disc", "box": [10.600000000000001, 55.4, -3.0, 0, 25.6, 70.4], "axis": "y", "label": true}, {"name": "엔코더(상단)", "kind": "disc", "box": [80.5, 107.5, 10.5, 37.5, 85.5, 88.5], "axis": "z", "label": true}, {"name": "USB-C 충전 (포켓 13.5×7.5×2.2)", "kind": "rect", "box": [-3.0, -0.8, 45.45, 52.95, 61.150000000000006, 74.65], "axis": null, "label": true}, {"name": "USB-C 개구 9.6×3.8", "kind": "rect", "box": [-0.8, 0, 47.300000000000004, 51.1, 63.10000000000001, 72.7], "axis": null, "label": false}, {"name": "충전 LED", "kind": "disc", "box": [-3.0, 0, 47.2, 49.2, 56.0, 58.0], "axis": "x", "label": true}, {"name": "충전 LED", "kind": "disc", "box": [-3.0, 0, 47.2, 49.2, 52.0, 54.0], "axis": "x", "label": false}, {"name": "이어폰 잭 Ø7", "kind": "disc", "box": [44.6, 51.6, 47.1, 54.1, 85.5, 88.5], "axis": "z", "label": true}, {"name": "SD 카드 슬롯", "kind": "rect", "box": [79.5, 93.5, 47.8, 50.8, 85.5, 88.5], "axis": null, "label": true}, {"name": "전원 스위치", "kind": "rect", "box": [122.0, 125.0, 52.53, 58.67, 66.43, 72.57], "axis": null, "label": true}, {"name": "환기", "kind": "rect", "box": [15, 17, 64.6, 67.6, 17, 37], "axis": null, "label": true}, {"name": "환기", "kind": "rect", "box": [15, 17, 64.6, 67.6, 64, 84], "axis": null, "label": true}, {"name": "환기", "kind": "rect", "box": [23, 25, 64.6, 67.6, 17, 37], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [23, 25, 64.6, 67.6, 64, 84], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [31, 33, 64.6, 67.6, 17, 37], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [31, 33, 64.6, 67.6, 64, 84], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [39, 41, 64.6, 67.6, 17, 37], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [39, 41, 64.6, 67.6, 64, 84], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [47, 49, 64.6, 67.6, 17, 37], "axis": null, "label": false}, {"name": "환기", "kind": "rect", "box": [47, 49, 64.6, 67.6, 64, 84], "axis": null, "label": false}], "note": "LCD 플렉스: 우측(+X)으로 나와 3mm 틈에서 뒤(+Y)로 꺾임 (Pi는 y46~ 뒤라 간섭 없음) / 깊이 3+27+12+2+2+3+1.6+17+3=70.6. 보드 부품면이 뒷벽 향함(스탠드오프17), 밀폐 챔버 컵, SD 슬롯 상단, 전원 스위치 우측 z66-73, USB-C 좌측 포켓", "notes": [{"v": "F", "at": [86.5, 24], "txt": "Pi (SD 끝 위,\n부품면 뒤)"}, {"v": "F", "at": [32, 50.5], "txt": "HAT 63.5×70 (부품면 뒤)"}, {"v": "F", "at": [-18, 7], "txt": "배터리 커넥터", "to": [15.5, 9]}, {"v": "F", "at": [40, 91], "txt": "디버그 패드 J9 (뒤판 열고 접근)", "to": [53.6, 66]}, {"v": "T", "at": [100, 14], "txt": "밀폐 챔버(컵) 벽2", "to": [34, 33]}, {"v": "T", "at": [-22, 20], "txt": "스탠드오프 Ø5.5×17", "to": [3.5, 56]}, {"v": "R", "at": [14, 6], "txt": "밀폐 챔버(컵)", "to": [33, 82]}, {"v": "R", "at": [56, 8], "txt": "스탠드오프 Ø5.5×17", "to": [56, 18]}], "labels": [{"txt": "밀폐 챔버(컵)", "pos": [34, 33, 84.0]}, {"txt": "커넥터·케이블 공간 17", "pos": [51, 56, 86.0]}, {"txt": "스탠드오프 Ø5.5×17", "pos": [61, 58, 50]}, {"txt": "배터리 커넥터", "pos": [15.5, 53, 1]}, {"txt": "디버그 패드 J9", "pos": [53.6, 50, 66]}, {"txt": "납땜 리드 3", "pos": [51, 44, 17.0]}]}, {"key": "B", "title": "B. 세로형", "inner": [71.0, 76.0, 134.5], "outer": [77.0, 140.5, 82.0], "parts": [{"name": "배터리 52×12×90", "col": "#edc948", "shape": "box", "axis": null, "box": [9.5, 61.5, 46, 58, 0, 90], "dashed": false, "alpha": null}, {"name": "Pi Zero", "col": "#8cd17d", "shape": "box", "axis": null, "box": [0.5, 65.5, 61, 76, 33, 63], "dashed": false, "alpha": null}, {"name": "HAT 70×63.5", "col": "#76b7b2", "shape": "box", "axis": null, "box": [0.5, 70.5, 61, 76, 70.5, 134], "dashed": false, "alpha": null}, {"name": "스피커 66×66", "col": "#f28e2b", "shape": "box", "axis": null, "box": [2.5, 68.5, 0, 27, 0, 66], "dashed": false, "alpha": null}, {"name": "챔버16 유닛27", "col": "#fbc78c", "shape": "box", "axis": null, "box": [2.5, 68.5, 27, 43, 0, 66], "dashed": false, "alpha": null}, {"name": "엔코더 ø26×30", "col": "#59a14f", "shape": "cyl", "axis": "y", "box": [22.5, 48.5, 0, 30, 69.5, 95.5], "dashed": false, "alpha": null}, {"name": "노브ø27", "col": "#59a14f", "shape": "cyl", "axis": "y", "box": [22.0, 49.0, -25, 0, 69.0, 96.0], "dashed": true, "alpha": null}, {"name": "LCD 50×35.5", "col": "#4e79a7", "shape": "box", "axis": null, "box": [10.5, 60.5, 0, 8, 99, 134.5], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [0.5, 10.5, 3.2, 4.0, 106.75, 126.75], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [0.5, 1.3, 4.0, 14.0, 106.75, 126.75], "dashed": false, "alpha": null}, {"name": "스위치 20×13×7", "col": "#b07aa1", "shape": "box", "axis": null, "box": [51, 71, 46, 59, 112, 119], "dashed": false, "alpha": null}, {"name": "bushing", "col": "#b07aa1", "shape": "cyl", "axis": "x", "box": [74, 80, 49.435, 55.565, 112.435, 118.565], "dashed": true, "alpha": null}], "openings": [{"name": "LCD 창", "kind": "rect", "box": [17.7, 53.3, -3.0, 0, 100.6, 132.9], "axis": null, "label": true}, {"name": "엔코더", "kind": "disc", "box": [22.0, 49.0, -3.0, 0, 69.0, 96.0], "axis": "y", "label": true}, {"name": "스피커 그릴", "kind": "disc", "box": [9.100000000000001, 61.9, -3.0, 0, 6.600000000000001, 59.4], "axis": "y", "label": true}, {"name": "이어폰 잭", "kind": "rect", "box": [32.5, 38.5, 65, 72, 134.5, 137.5], "axis": null, "label": true}, {"name": "USB-C 충전", "kind": "rect", "box": [71.0, 74.0, 64, 72, 92.5, 112.5], "axis": null, "label": true}, {"name": "전원 스위치", "kind": "rect", "box": [71.0, 74.0, 49.43, 55.57, 112.43, 118.57], "axis": null, "label": true}], "note": "LCD 플렉스: 좌측(-X)으로 10mm 나와 뒤(+Y)로 10mm 꺾임 / LCD 가로 50×35.5. 노브 +25 (앞), 스위치 부싱 +6 (우측)", "notes": [], "labels": []}, {"key": "C1", "title": "C1. 엔코더 정면 옆", "inner": [170.5, 63.0, 71.0], "outer": [176.5, 77.0, 69.0], "parts": [{"name": "스피커 66×66", "col": "#f28e2b", "shape": "box", "axis": null, "box": [0, 66, 0, 27, 2.5, 68.5], "dashed": false, "alpha": null}, {"name": "챔버9 유닛27", "col": "#fbc78c", "shape": "box", "axis": null, "box": [0, 66, 27, 36, 2.5, 68.5], "dashed": false, "alpha": null}, {"name": "Pi Zero", "col": "#8cd17d", "shape": "box", "axis": null, "box": [69, 99, 33, 48, 3, 68], "dashed": false, "alpha": null}, {"name": "HAT 63.5×70", "col": "#76b7b2", "shape": "box", "axis": null, "box": [106.5, 170, 33, 48, 0.5, 70.5], "dashed": false, "alpha": null}, {"name": "배터리 90×52×12", "col": "#edc948", "shape": "box", "axis": null, "box": [57.5, 147.5, 51, 63, 9.5, 61.5], "dashed": false, "alpha": null}, {"name": "LCD 50×35.5", "col": "#4e79a7", "shape": "box", "axis": null, "box": [69, 119, 0, 8, 17.75, 53.25], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [119, 121.5, 3.2, 4.0, 25.5, 45.5], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [120.7, 121.5, 4.0, 23.2, 25.5, 45.5], "dashed": false, "alpha": null}, {"name": "엔코더 ø26×30", "col": "#59a14f", "shape": "cyl", "axis": "y", "box": [124.5, 150.5, 0, 30, 22.5, 48.5], "dashed": false, "alpha": null}, {"name": "노브", "col": "#59a14f", "shape": "cyl", "axis": "y", "box": [124.0, 151.0, -25, 0, 22.0, 49.0], "dashed": true, "alpha": null}, {"name": "스위치", "col": "#b07aa1", "shape": "box", "axis": null, "box": [150.5, 170.5, 12, 25, 12, 19], "dashed": false, "alpha": null}, {"name": "bushing", "col": "#b07aa1", "shape": "cyl", "axis": "x", "box": [173.5, 179.5, 15.435, 21.565, 12.435, 18.565], "dashed": true, "alpha": null}], "openings": [{"name": "LCD 창", "kind": "rect", "box": [76.2, 111.8, -3.0, 0, 19.35, 51.65], "axis": null, "label": true}, {"name": "스피커 그릴", "kind": "disc", "box": [10.600000000000001, 55.4, -3.0, 0, 13.100000000000001, 57.9], "axis": "y", "label": true}, {"name": "엔코더", "kind": "disc", "box": [124.0, 151.0, -3.0, 0, 22.0, 49.0], "axis": "y", "label": true}, {"name": "USB-C 충전", "kind": "rect", "box": [170.5, 173.5, 37, 44, 31, 36], "axis": null, "label": true}, {"name": "이어폰 잭", "kind": "rect", "box": [134.5, 142.5, 36.5, 44.5, 71.0, 74.0], "axis": null, "label": true}, {"name": "전원 스위치", "kind": "rect", "box": [170.5, 173.5, 15.43, 21.57, 12.43, 18.57], "axis": null, "label": true}], "note": "LCD 플렉스: 우측(+X)으로 2.5mm 나와 3mm 틈에서 뒤(+Y)로 꺾임 / 정면 스피커·LCD·엔코더 한 줄. 노브 중심 높이 책상 위 38.5mm. 배터리는 보드 뒤. 노브 +25 (앞), 부싱 +6 (우측)", "notes": [], "labels": []}, {"key": "C2", "title": "C2. 엔코더 상단", "inner": [170.5, 60.0, 71.0], "outer": [176.5, 77.0, 66.0], "parts": [{"name": "스피커 66×66", "col": "#f28e2b", "shape": "box", "axis": null, "box": [0, 66, 0, 27, 2.5, 68.5], "dashed": false, "alpha": null}, {"name": "챔버9 유닛27", "col": "#fbc78c", "shape": "box", "axis": null, "box": [0, 66, 27, 36, 2.5, 68.5], "dashed": false, "alpha": null}, {"name": "Pi Zero", "col": "#8cd17d", "shape": "box", "axis": null, "box": [69, 99, 30, 45, 3, 68], "dashed": false, "alpha": null}, {"name": "HAT 63.5×70", "col": "#76b7b2", "shape": "box", "axis": null, "box": [106.5, 170, 30, 45, 0.5, 70.5], "dashed": false, "alpha": null}, {"name": "배터리 90×52×12", "col": "#edc948", "shape": "box", "axis": null, "box": [57.5, 147.5, 48, 60, 9.5, 61.5], "dashed": false, "alpha": null}, {"name": "LCD 50×35.5", "col": "#4e79a7", "shape": "box", "axis": null, "box": [69, 119, 0, 8, 2.5, 38.0], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [119, 121.5, 3.2, 4.0, 10.25, 30.25], "dashed": false, "alpha": null}, {"name": "flex", "col": "#1f3b5c", "shape": "box", "axis": null, "box": [120.7, 121.5, 4.0, 23.2, 10.25, 30.25], "dashed": false, "alpha": null}, {"name": "엔코더 ø26×30", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [81.0, 107.0, 1.0, 27.0, 41.0, 71.0], "dashed": false, "alpha": null}, {"name": "노브ø27", "col": "#59a14f", "shape": "cyl", "axis": "z", "box": [80.5, 107.5, 0.5, 27.5, 74.0, 99.0], "dashed": true, "alpha": null}, {"name": "스위치", "col": "#b07aa1", "shape": "box", "axis": null, "box": [150.5, 170.5, 12, 25, 12, 19], "dashed": false, "alpha": null}, {"name": "bushing", "col": "#b07aa1", "shape": "cyl", "axis": "x", "box": [173.5, 179.5, 15.435, 21.565, 12.435, 18.565], "dashed": true, "alpha": null}], "openings": [{"name": "LCD 창", "kind": "rect", "box": [76.2, 111.8, -3.0, 0, 4.100000000000001, 36.4], "axis": null, "label": true}, {"name": "스피커 그릴", "kind": "disc", "box": [10.600000000000001, 55.4, -3.0, 0, 13.100000000000001, 57.9], "axis": "y", "label": true}, {"name": "엔코더(상단)", "kind": "disc", "box": [80.5, 107.5, 0.5, 27.5, 71.0, 74.0], "axis": "z", "label": true}, {"name": "USB-C 충전", "kind": "rect", "box": [170.5, 173.5, 34, 41, 31, 36], "axis": null, "label": true}, {"name": "이어폰 잭", "kind": "rect", "box": [134.5, 142.5, 33.5, 41.5, 71.0, 74.0], "axis": null, "label": true}, {"name": "전원 스위치", "kind": "rect", "box": [170.5, 173.5, 15.43, 21.57, 12.43, 18.57], "axis": null, "label": true}], "note": "LCD 플렉스: 우측(+X)으로 2.5mm 나와 3mm 틈에서 뒤(+Y)로 꺾임 / 엔코더 상단(노브 위). LCD는 아래쪽, 엔코더 body가 LCD 위에 3mm 간격. 노브 +25 (위), 부싱 +6 (우측)", "notes": [], "labels": []}];
+const T = 3.0;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xeef0f3);
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 1, 5000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const lr = new CSS2DRenderer();
+lr.setSize(innerWidth, innerHeight);
+Object.assign(lr.domElement.style,{position:'fixed',top:'0',left:'0',pointerEvents:'none'});
+document.body.appendChild(lr.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const dl = new THREE.DirectionalLight(0xffffff, 1.0); dl.position.set(200,400,300); scene.add(dl);
+const grid = new THREE.GridHelper(1000, 100, 0x888899, 0xc4c8d0); grid.position.y = -0.01; scene.add(grid);
+
+// inner (x,y,z) -> three (x, z, -y); group origin = inner origin, lifted by T so the case bottom sits on the grid.
+const M = (b) => ({cx:(b[0]+b[1])/2, cy:(b[4]+b[5])/2, cz:-(b[2]+b[3])/2, sx:b[1]-b[0], sy:b[5]-b[4], sz:b[3]-b[2]});
+function solid(b, geomFn) {
+  const m = M(b); const g = geomFn(m); return [g, m];
+}
+function cylGeom(b, axis) {
+  const m = M(b);
+  let r, len;
+  if (axis==='z'){ r=Math.min(m.sx,m.sz)/2; len=m.sy; }
+  else if (axis==='y'){ r=Math.min(m.sx,m.sy)/2; len=m.sz; }
+  else { r=Math.min(m.sz,m.sy)/2; len=m.sx; }
+  const g = new THREE.CylinderGeometry(r, r, len, 40);
+  if (axis==='y') g.rotateX(Math.PI/2); else if (axis==='x') g.rotateZ(Math.PI/2);
+  return g;
+}
+function boxGeom(b){ const m=M(b); return new THREE.BoxGeometry(m.sx,m.sy,m.sz); }
+function lab(text, cls, pos, parent){ const d=document.createElement('div'); d.className=cls; d.textContent=text;
+  const o=new CSS2DObject(d); o.position.copy(pos); parent.add(o); return o; }
+
+const groups = [], partMeshes = [], labelObjs = [], shellObjs = [];
+DATA.forEach((c) => {
+  const g = new THREE.Group(); g.position.y = T; scene.add(g);
+  const [Wi,Di,Hi] = c.inner;
+  // shell
+  const sb = [-T, Wi+T, -T, Di+T, -T, Hi+T];
+  const sg = boxGeom(sb), sm = M(sb);
+  const shell = new THREE.Group();
+  const mesh = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({color:0x8899aa, transparent:true, opacity:0.15, depthWrite:false}));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(sg), new THREE.LineBasicMaterial({color:0x222222}));
+  shell.add(mesh, edges); shell.position.set(sm.cx, sm.cy, sm.cz); g.add(shell); shellObjs.push(shell);
+  // parts
+  c.parts.forEach((p) => {
+    const geo = p.shape==='cyl' ? cylGeom(p.box, p.axis) : boxGeom(p.box);
+    const mat = new THREE.MeshStandardMaterial({color:p.col, transparent:p.dashed||!!p.alpha, opacity:p.alpha||(p.dashed?0.8:1), depthWrite:!p.alpha, roughness:0.6});
+    const me = new THREE.Mesh(geo, mat); const m = M(p.box); me.position.set(m.cx,m.cy,m.cz);
+    me.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), new THREE.LineBasicMaterial({color:0x333333, transparent:true, opacity:0.5})));
+    me.userData.name = p.name; g.add(me); partMeshes.push(me);
+  });
+  // openings (slightly oversized so they show over the shell faces)
+  c.openings.forEach((o) => {
+    const e = 0.4, b = o.box;
+    const bb = [b[0]-e,b[1]+e,b[2]-e,b[3]+e,b[4]-e,b[5]+e];
+    const geo = o.kind==='disc' ? cylGeom(bb, o.axis) : boxGeom(bb);
+    const me = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:0xff2020}));
+    const m = M(b); me.position.set(m.cx,m.cy,m.cz); me.userData.name = o.name+' (개구부)'; g.add(me); partMeshes.push(me);
+    // label pushed outward from the wall
+    const out = new THREE.Vector3(0,0,0);
+    if (b[2] < 0 && b[3] <= 0.01) out.z = 18; else if (b[2] >= Di-0.01) out.z = -18;
+    else if (b[0] >= Wi-0.01) out.x = 18; else if (b[1] <= 0.01 && b[0] < 0) out.x = -18; else if (b[5] > Hi) out.y = 18;
+    if (o.label !== false) labelObjs.push(lab(o.name,'lab',new THREE.Vector3(m.cx,m.cy,m.cz).add(out), g));
+  });
+  (c.labels||[]).forEach(l => labelObjs.push(lab(l.txt,'lab',new THREE.Vector3(l.pos[0], l.pos[2], -l.pos[1]), g)));
+  (c.notes||[]).forEach(n => { if (n.to) return;
+    const yy = n.v==='F' ? Di*0.0 : 0;
+    const pp = c.parts.find(p => n.txt.startsWith('Pi') ? p.name.startsWith('Pi') : p.name.startsWith('HAT'));
+    if (!pp) return; const mm = M(pp.box);
+    labelObjs.push(lab(n.txt.replace('\n',' '),'lab',new THREE.Vector3(mm.cx, mm.cy, mm.cz + mm.sz/2 + 4), g)); });
+  // dims + front marker
+  labelObjs.push(lab(`${c.title}  ${c.outer.map(v=>+v.toFixed(1)).join('×')} mm (W×H×D)`,'dim',
+    new THREE.Vector3(Wi/2, Math.max(Hi+T, ...c.parts.map(p=>p.box[5]))+16, -Di/2), g));
+  lab('▼ 정면','front',new THREE.Vector3(Wi/2, -T+1, T+32), g);
+  const arrow = new THREE.ArrowHelper(new THREE.Vector3(0,0,1), new THREE.Vector3(Wi/2,-T,T+2), 22, 0x2d4a7a, 7, 5);
+  g.add(arrow);
+  g.userData.c = c;
+  groups.push(g);
+});
+
+const gap = 40;
+function layout(mode) {
+  const ids = mode==='all' ? DATA.map((_,i)=>i) : [mode];
+  let x = 0; const total = ids.reduce((s,i)=>s+DATA[i].outer[0],0) + gap*(ids.length-1);
+  x = -total/2; let maxH=0, maxD=0;
+  groups.forEach((g,i) => {
+    g.visible = ids.includes(i);
+    if (g.visible) { g.position.x = x + T; g.position.z = DATA[i].inner[1]/2; x += DATA[i].outer[0]+gap;
+      maxH=Math.max(maxH,DATA[i].outer[1]); maxD=Math.max(maxD,DATA[i].outer[2]); }
+  });
+  const target = new THREE.Vector3(0, maxH/2, 0);
+  const dist = Math.max(total, maxH, maxD) * 1.9 + 60;
+  controls.target.copy(target);
+  camera.position.set(target.x + dist*0.55, target.y + dist*0.5, target.z + dist*0.85);
+  controls.update();
+  // legend
+  const seen = new Map();
+  ids.forEach(i => DATA[i].parts.forEach(p => { if(!seen.has(p.name)) seen.set(p.name,p.col); }));
+  document.getElementById('legend').innerHTML = [...seen].map(([n,c])=>`<div><i style="background:${c}"></i>${n}</div>`).join('') +
+    '<div><i style="background:#ff2020"></i>개구부</div>';
+  document.getElementById('dims').innerHTML = ids.map(i=>`<b>${DATA[i].title}</b> 외곽 ${DATA[i].outer.map(v=>+v.toFixed(1)).join('×')} mm<br><span style="color:#666">${DATA[i].note}</span>`).join('<br>');
+}
+// UI
+const bar = document.getElementById('bar');
+const NM = {A:'A. 가로 탁상형',A2:'A2. 가로형 (보드 세움)',A3:'A3. 추천안',B:'B. 세로형',C1:'C1. 엔코더 정면 옆',C2:'C2. 엔코더 상단'};
+const names = [...DATA.map((d,i)=>[String(i),NM[d.key]||d.title]),['all','여섯 나란히 (전체)']];
+const btns = names.map(([k,t]) => { const b=document.createElement('button'); b.textContent=t;
+  b.onclick=()=>{ btns.forEach(x=>x.classList.remove('on')); b.classList.add('on'); layout(k==='all'?'all':+k); }; bar.appendChild(b); return b; });
+function toggle(text, fn){ const l=document.createElement('label'); l.className='t'; const c=document.createElement('input'); c.type='checkbox'; c.onchange=()=>fn(c.checked); l.append(c,' '+text); bar.appendChild(l); return c; }
+toggle('케이스 숨기기', v => shellObjs.forEach(s => s.visible = !v));
+const lc = toggle('라벨', v => labelObjs.forEach(o => o.visible = v)); lc.checked = true;
+btns[0].click();
+
+// hover tooltip
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), tip = document.getElementById('tip');
+renderer.domElement.addEventListener('pointermove', (e) => {
+  mouse.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1); ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObjects(partMeshes.filter(m => m.parent.visible), false)[0];
+  if (hit) { tip.style.display='block'; tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px'; tip.textContent=hit.object.userData.name; }
+  else tip.style.display='none';
+});
+addEventListener('resize', () => { camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); lr.setSize(innerWidth,innerHeight); });
+(function loop(){ requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); lr.render(scene,camera); })();
+</script></body></html>

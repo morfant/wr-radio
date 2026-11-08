@@ -172,3 +172,26 @@ Vout = 0.595 × (1 + R1/R2)
 - 인덕터: Sunlord SWPA4020S1R0NT 데이터시트 `https://www.lcsc.com/datasheet/lcsc_datasheet_2310251551_Sunlord-SWPA4020S1R0NT_C91254.pdf` (Isat 4.78 A는 JLCPCB 속성값, PDF 본문은 열지 않음).
 - KiCad 10 로컬 라이브러리(`Connector_Audio.kicad_sym`, `Connector_Audio.pretty`)로 심볼·풋프린트 존재 여부 확인.
 - 셋업비 $3/종은 기억에 의한 JLCPCB 요금 가정이며 이번에 사이트에서 재확인하지 않았다.
+
+## 9. A3 케이스 반영 부품 (2026-11-08 A3 케이스 반영)
+
+`Case/concepts/A3_review.md` P1·P3·P6에 따른 커넥터·LED 교체. 재고는 2026-11-08 JLCPCB 부품 검색 API 조회값. 회로도 LCSC/MPN/Footprint 필드와 `radio-hat-v08/radio-hat-v08_bom.csv`(kicad-cli로 다시 뽑음) 반영 완료.
+
+| 참조 | 용도 | LCSC | 부품번호 (제조사) | 구분 | 재고 | 풋프린트 |
+|---|---|---|---|---|---|---|
+| D2 | CHRG 측면 발광 LED, 적색 | C965860 | XL-1606SURC (XINGLIGHT) | Ext | 약 22만 | LED_SMD:LED_Kingbright_APA1606_1.6x0.6mm_Horizontal |
+| D3 | STDBY 측면 발광 LED, 녹색 | C409794 | MHS190UGCT (MEIHUA) | Ext | 약 3.8천 | 같음 |
+| J3 | 배터리 JST XH 옆꽂이 2핀 | C157931 | S2B-XH-A(LF)(SN) (JST) | Ext | 약 6.8만 | Connector_JST:JST_XH_S2B-XH-A_1x02_P2.50mm_Horizontal |
+| J7 | 스피커 라이트앵글 2핀 | C492410 | PZ254R-11-02P (XFCN) | Ext | 약 18만 | Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Horizontal |
+| J4 | 전원 스위치 라이트앵글 3핀 | C492411 | PZ254R-11-03P (XFCN) | Ext | 약 9.1만 | …PinHeader_1x03_P2.54mm_Horizontal |
+| J6 | 엔코더 라이트앵글 5핀 | C492413 | PZ254R-11-05P (XFCN) | Ext | 약 3.1만 | …PinHeader_1x05_P2.54mm_Horizontal |
+| J5 | LCD 라이트앵글 8핀 | C492416 | PZ254R-11-08P (XFCN) | Ext | 약 2.6만 | …PinHeader_1x08_P2.54mm_Horizontal |
+| J9 | UART 디버그 패드 3개 | — | 부품 없음 (DNP) | — | — | Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical (BOM·위치 파일 제외) |
+| U1 | TP4056 (부품 같음 C16581) | — | 풋프린트만 변경 | — | — | Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.41x3.3mm (비아 내장 버전 → 비아 없는 버전) |
+
+- 측면 발광 LED: JLC에 Basic 부품은 없음. 백색 측면 LED는 재고가 수십~백여 개(C710208 184개, C2922366 40개 등)뿐이라 **적색 + 녹색** 조합. 적색 XL-1606SURC: 1.7×0.6×1.1 mm, Vf 1.9~2.3V@20mA, 권장 패드 0.77×0.95 간격 0.86. 녹색 MHS190UGCT: 1.6×0.6(높이)×0.3 mm, Vf 2.5~2.9V@5mA, 180~360 mcd@5mA, 권장 패드 0.65×0.65 간격 0.8. 둘 다 KiCad `LED_Kingbright_APA1606`(패드 0.9×1.0, 중심 ±0.8)에 맞음.
+  - **극성 주의**: XL-1606SURC는 1번 = 캐소드(−), MHS190UGCT는 1번 = 애노드(+)로 데이터시트 번호가 반대. 풋프린트는 패드 1 = K(회로도 LED 심볼 1 = K)이므로 JLC 조립 미리보기에서 각 LED의 캐소드 표시가 패드 1 쪽인지 확인할 것.
+  - 대안: 같은 패키지 계열로 맞추려면 TOGIALED TJ-S3210SW5TGLC2R-A5(적, C273626, 6.5천) / ...G-A5(녹, C273630, 1.6천) — 3.2×1.5 3패드라 전용 풋프린트 필요.
+  - 직렬저항 R4/R5 1k(C21190 Basic) 그대로: 적 약 3.1 mA, 녹 약 2.3 mA.
+- 라이트앵글 헤더는 XFCN PZ254R 계열(핀 길이 6 mm, 몸체 2.5 mm). JST 정품 S2B-XH-A(LF)(SN)은 THT. 모두 THT라 JLC THT 조립을 쓰거나 손납땜. J9는 핀을 꽂지 않는 패드라 조립 대상 아님.
+- 새로 Extended가 늘어나는 종류: LED 2, J3 1(이전 B2B와 교체), 헤더 4(이전엔 LCSC 비움).

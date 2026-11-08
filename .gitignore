@@ -12,3 +12,6 @@ PCB/kicad/tools/v08gen/build/
 *.kicad_prl
 *-backups/
 PCB/kicad/radio-hat-v08/*.pdf
+.history/
+*.bak_before_*
+~*.lck
