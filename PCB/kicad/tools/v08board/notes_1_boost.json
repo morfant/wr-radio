@@ -1,0 +1,5 @@
+[[31.8, -60.8, "+5V exit -> J1 pins 2/4 (from C8.1, go left)", 30.0, -63.2],
+ [39.0, -49.6, "SYS in: channel y=-49.6 under C5 (from D1/Q1, left)", 31.0, -48.6],
+ [37.775, -51.5, "BST_EN exit -> J4.2 (left from R13.1)", 30.2, -53.0],
+ [42.0, -54.3, "SW under U4 body", 44.0, -51.6],
+ [41.9, -56.0, "hot loop: U4.6 -> C6/C7 -> U4.4", 45.5, -61.5]]

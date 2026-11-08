@@ -4,7 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-WR-Radio is a portable internet radio (Raspberry Pi Zero 2W) that streams ambient sounds from locations worldwide. The repository has three parts: `PI/` (Python application), `PCB/` (Eagle CAD schematic/layout), and `Case/` (OpenSCAD parametric case).
+WR-Radio is a portable internet radio (Raspberry Pi Zero 2W) that streams ambient sounds from locations worldwide. The repository has three parts: `PI/` (Python application), `PCB/` (Eagle CAD up to v07; KiCad 10 from v08), and `Case/` (OpenSCAD parametric case).
+
+### PCB v08 (KiCad)
+
+- Design spec (single source of intent): `PCB/kicad/v08_design_spec.md`; parts `v08_parts.md`; review log `v08_audit.md`; routing progress `v08_routing_log.md`.
+- Project: `PCB/kicad/radio-hat-v08/`. The KiCad files are the source of truth — do **not** rerun the original generator `PCB/kicad/tools/v08gen/`.
+- Board scripts in `PCB/kicad/tools/v08board/` (placement `place_A3.py`, checks `chk_A3.py`, routing `route_<n>_*.py`). Run them only while the KiCad GUI is closed, with KiCad's bundled Python (`/Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3`).
+- The board stands against the case rear wall with its component side facing the back (case concept A3, `Case/concepts/`).
 
 All active software development happens in `PI/`. Case design is in `Case/`.
 
