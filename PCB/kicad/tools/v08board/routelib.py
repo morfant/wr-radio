@@ -14,7 +14,7 @@ import sys
 import pcbnew
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PCB = os.path.abspath(os.path.join(HERE, "..", "..", "radio-hat-v08", "radio-hat-v08.kicad_pcb"))
+PCB = os.environ.get("WR_PCB") or os.path.abspath(os.path.join(HERE, "..", "..", "radio-hat-v08", "radio-hat-v08.kicad_pcb"))
 CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
 MM = pcbnew.FromMM
 F, B = pcbnew.F_Cu, pcbnew.B_Cu

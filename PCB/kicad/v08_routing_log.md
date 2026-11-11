@@ -16,8 +16,8 @@
 | 3. 전원 분배 (+5V, +3V3, J1 GND 비아) | **완료** (2026-11-12) | `tools/v08board/route_3_power.py` / `radio-hat-v08/route_3_power.png` |
 | 4. 헤드폰 DAC (U6) + 잭 J8 | **완료** (2026-11-12) | `route_4a_dac.py` → `route_4b_jack.py` / `radio-hat-v08/route_4_dac.png` |
 | 5. 스피커 앰프 (U7) + J7 | **완료** (2026-11-12) | `tools/v08board/route_5_amp.py` / `radio-hat-v08/route_5_amp.png` |
-| 6. 일반 신호선 | 다음 | Freerouting (I2C, SPI/LCD, 엔코더, 제어선, LED, J9) |
-| 7. GND 채우기 + 연결 비아 | 대기 | F.Cu/B.Cu 모두. 지금 B.Cu에 이름 없는 연습용 GND 존이 있음 → 정식 존으로 교체 |
+| 6. 일반 신호선 | **완료** (2026-11-12) | `route_6a_hand.py` → Freerouting(`route_6_prep_dsn.py`, `route_6_freerouting.rules/.ses`) → `route_6b_import_ses.py`, 전체 순서 `route_6_freerouting.sh` / `radio-hat-v08/route_6_signals.png` |
+| 7. GND 채우기 + 연결 비아 | 다음 | F.Cu/B.Cu 모두. 지금 B.Cu에 이름 없는 연습용 GND 존이 있음 → 정식 존으로 교체 |
 | 8. 마무리 | 대기 | DRC 0, 실크 정리, Fable 최종 검토 제안 |
 
 ## 구역 1 (부스트) 메모
@@ -103,3 +103,27 @@
   - **AMP_SD**: R21.1 (31.175, −13.7) → 서쪽. 남서쪽 칸(x 29–37, y −16.5…+4)은 열려 있어 J5 핀 사이(6/7번 사이 y ≈ −13)로 F.Cu로 나가 J1.18 (3.95, −33.19)로 갈 수 있음.
   - **I2S**: U7 서·북쪽은 +5V 가지(x 30.5)·+5V 공급선(y −17.5)·BAT+ 줄기에 둘러싸여 **DIN(1)/BCLK(16)/LRCLK(14)는 B.Cu 건너가기 필요**. DIN은 1번에서 서쪽 → JP1과 U7 사이 틈(x ≈ 33.6)으로 북쪽(JP1.3 비아 (31.6,−22.4) 위로 지나기). BCLK/LRCLK은 북쪽으로. **x 31–36, y −29…−22.4는 양면 모두 비워 둠**(비아 자리). LRCLK(J1.35 (6.49,−10.32))·DIN(J1.40 (3.95,−5.25))은 J1 아래쪽이라, J5 핀 사이로 F.Cu로 남서쪽 칸에 들어와 +5V 공급선 아래를 B.Cu로 짧게 건너거나, 서쪽에서 J6 아래·+5V 가지 아래를 B.Cu로 건너는 두 길이 있음.
 - 점검: 구리 관련 DRC 오류 0 (via_dangling 1 = CHG_DIS 출구 그대로), 연결 안 됨 59 → 37 (이 구역 넷에서 남은 것은 AMP_SD → J1.18뿐), 회로도↔보드 불일치 0 (`chk_A3.py`, kicad-cli parity 0). silk_over_copper 23 → 31 (8구역 실크 정리).
+
+## 구역 6 (일반 신호선) 메모
+
+- 순서 (`tools/v08board/route_6_freerouting.sh [--reroute]`, GUI 닫고): `route_6a_hand.py`(손 배선, `owned_6a.json`) → 보드에서 DSN 내보내기 → `route_6_prep_dsn.py` → Freerouting 2.5.0 → `route_6b_import_ses.py`(`owned_6b.json`). `--reroute` 없으면 저장된 `route_6_freerouting.ses`를 그대로 넣는다. 다시 돌려도 같은 .ses가 나옴(확인함). 모두 잠금.
+  - Freerouting 명령: `java -jar freerouting-2.5.0.jar -de route_6.dsn -dr route_6_freerouting.rules -do route_6_freerouting.ses --router.autorouter.max_passes=150 --router.fanout.enabled=false --router.optimizer.enabled=true --gui.enabled=false` (rules: via 비용 40, F.Cu 1.0, B.Cu 5.0). **fanout은 꼭 끌 것**(기본값이 켜짐 → 모든 SMD 핀에 비아를 박음).
+  - `route_6_prep_dsn.py`: 구역 6 넷만 남기고 다른 넷(GND, +3V3, 전원, 이미 끝난 넷)은 DSN에서 뺀다 → 그 패드·동박은 이름 없는 고정 장애물이 되어 Freerouting이 GND/전원에 동박을 못 더함(.ses에 구역 6 넷만 있는 것 확인, 다른 넷이 있으면 가져오기가 멈춤). 연습용 B.Cu GND 존은 뺌, F.Cu 존은 keepout으로. keepout: 부스트(U4/L1/C6), U6 윗부분+HP 선, U7 출력·J7, 장착 구멍 5개. **B.Cu는 정해 둔 창에서만 허용**(나머지 B.Cu는 keepout 사각형으로 덮음): J1/J9/C25 주변, J6 사이 통로·+5V 가지 밑(문), J4.3 북쪽 +5V/BST_EN/SYS 밑(북쪽 건너가기), U7 +5V 공급선 밑, CHG_DIS 출구, J1 아래쪽, +3V3·+5V 사이 틈, J1.22 서쪽 가장자리.
+  - `route_6b_import_ses.py`는 `pcbnew.ImportSpecctraSES` 대신 .ses를 직접 읽어 구역 6 넷만 잠근 동박으로 추가(0 길이 토막은 버림). `routelib.py`·`dump_region.py`는 환경변수 `WR_PCB`로 보드 사본을 가리킬 수 있게 함(시험은 사본에서).
+- 손 배선 (`route_6a_hand.py`):
+  - BST_EN: R13.1 → y −51.5 서쪽 → x 30.4 남쪽 → y −36.95 → J4.2 (F.Cu 0.25, 비아 없음).
+  - VBAT_SENSE/VBUS_SENSE: 분압 중간점을 F.Cu로 잇고(VBUS_SENSE는 C9/R16 사이 0.75 틈으로 내려옴), 분압 줄과 BAT+ 대각선 사이에 비아 하나씩 (41.05,−30.25)/(42.75,−29.55) → B.Cu 6.7/7.3 mm로 BAT+ 모서리 밑 → U5 바로 남쪽 비아 (34.5,−28.95)/(35.6,−28.3) → U5.4/U5.5.
+  - UART_TX/RX: J1.8/J1.10 → J9.2/J9.3 **B.Cu 패드끼리**(둘 다 THT, 비아 0, 각 7.5 mm, J1 줄 사이 y −47.155/−44.615로 비켜 감). F.Cu로 두면 J1과 J9 사이 띠를 가로질러 SDA/SCL/BCLK이 갈 길이 없음(이 띠가 J1.3/J1.5에서 보드 안쪽으로 가는 유일한 F.Cu 길이고, 그 동쪽은 J9·R23/C25(HP_DET)·HP_TN이 막고 있음).
+- 왜 B.Cu가 이만큼 필요한가: U6(A 구역, J1 북쪽)과 U5/U7(오른쪽)은 +5V 가지·SYS·BST_EN·+3V3 B.Cu 건너가기로 갈라져 있고, J1 북쪽 핀(SDA/SCL/UART/BCLK)과 U6 사이도 J9·R23/C25가 막는다. 그래서 SDA·SCL·I2S 세 줄·HP_DET는 각각 한 번 이상 B.Cu로 건넌다. 손으로 먼저 따져 본 최소치도 약 80 mm였음.
+- 결과 넷별 (F / B mm, 비아): SDA 41/15 (4), I2S_BCLK 35/12 (4), CHG_DIS 160/10 (4), HP_DET 4/10 (1), I2S_LRCLK 83/8 (4), SCL 39/7 (2), I2S_DIN 119/6 (2), UART 각 0/7.5 (0), VBUS_SENSE 11/7 (2), VBAT_SENSE 7/7 (2), BST_EN 31/0. LCD 6개·ENC 3개·AMP_SD는 전부 F.Cu, 비아 0.
+  - CHG_DIS는 출구 비아에서 B.Cu로 상태선·VBUS선 밑을 지나 (46.9,−29.3)에서 올라온 뒤 **오른쪽·아래 가장자리를 돌아** J1 아래에서 J1.22로 (F.Cu 160 mm, 느린 GPIO라 길이는 문제 없음, 다른 선을 건너지 않으려고).
+  - I2S_DIN은 J1.40 → 아래 가장자리 → J5 남쪽을 돌아 U7 쪽으로(+5V 공급선 밑 B.Cu 짧은 건너가기) → U6까지. LCD 4줄(CS/DC/RST/BL)도 J5 남쪽 끝을 돌아 J5 오른쪽에서 들어감(J1과 J5의 핀 순서가 반대라서).
+  - I2S·SPI는 HP_L/HP_R·부스트와 떨어져 있음: 부스트 상자 안 구역 6 동박은 BST_EN(R13.1 끝)뿐, U6 위쪽/HP 상자와 U7 출력 상자 안에는 없음(`route_6_stats.py`로 확인).
+  - Freerouting이 좁은 곳에서 선폭을 0.19 mm로 줄인 곳이 있음(약 25군데, JLC 최소 0.15 이상, DRC 통과). 0.25 고정(neckdown 끔)으로는 끝까지 못 감.
+- 점검 (전/후): 구리 관련 DRC 오류 0 (via_dangling 1 → 0, CHG_DIS 출구가 이어짐), 연결 안 됨 37 → 8, 회로도↔보드 불일치 0 (`chk_A3.py`, kicad-cli parity 0). 비아 73 → 97 (+24), F.Cu 선 643 → 1458 mm, **B.Cu 선 49.9 → 148.2 mm (구역 6 +98.3 mm)**.
+- 남은 연결 안 됨 8개: GND 7개(패드↔면, 구역 7 몫: U5.1/U5.3, U5.1↔J6.5, C11.2, C9.2/R15.2/R17.2/C10.2) + **+3V3 1개**: J1.1 쪽(C12/U6…)과 J1.17 쪽(C11/J6.1/U5.8)은 보드 위에서 안 이음 — 깨끗한 길이 없음(U6 쪽에서 J1.17 쪽으로 가려면 J4 칸·+5V 가지·ENC 묶음을 건너야 함). 둘 다 Pi 3V3 핀(1번, 17번)이라 Pi 안에서 이어진다. 구역 8 DRC에서 이 1건은 알고 남기는 것으로 표시할 것.
+- **구역 7이 알아야 할 것** (B.Cu GND 면에 생긴 틈 → F.Cu GND 채우기 + 꿰매기 비아):
+  - J1/J9 사이: UART B.Cu 2줄(y −47.2/−44.6), SDA B.Cu (J1 서쪽 가장자리 (1.5,−43.6) → J1 열 사이 → (8.3,−38.6)), HP_DET B.Cu 대각선 (4.0,−35.7)→(11.6,−41.5), BCLK (15.1~15.5, −41…−36.9), LRCLK (12.7, −39.1…−35.8).
+  - 북쪽 건너가기: SCL B.Cu y −40.7, x 25.3→32.3. 문: SDA y −29.4, BCLK y −26.9, LRCLK y −24.3 (x 26~31.4, J6 핀 사이로).
+  - 분압 B.Cu 2줄 (BAT+ 모서리 밑, y −28.3…−30.25), CHG_DIS B.Cu x 46.9 (y −35.65…−29.3), J1 아래 CHG_DIS B.Cu (4.0~7.7, y −3.3…−4.2), DIN U7 건너가기 (31.5~34, y −16.6…−21.4).
+  - U5.1/U5.3 GND 비아 자리: (33.2, −29.4) 근처가 비어 있음(VBAT 비아 (34.5,−28.95), SCL 선과 간격 확인함).

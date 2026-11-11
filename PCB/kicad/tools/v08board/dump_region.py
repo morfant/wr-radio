@@ -3,7 +3,7 @@ usage: dump_region.py out.json x0 y0 x1 y1"""
 import sys, os, json
 import pcbnew
 HERE = os.path.dirname(os.path.abspath(__file__))
-PCB = os.path.abspath(os.path.join(HERE, "..", "..", "radio-hat-v08", "radio-hat-v08.kicad_pcb"))
+PCB = os.environ.get("WR_PCB") or os.path.abspath(os.path.join(HERE, "..", "..", "radio-hat-v08", "radio-hat-v08.kicad_pcb"))
 out = sys.argv[1]; x0, y0, x1, y1 = map(float, sys.argv[2:6])
 M = pcbnew.ToMM
 b = pcbnew.LoadBoard(PCB)
