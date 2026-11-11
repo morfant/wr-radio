@@ -6,8 +6,8 @@ KiCad python, GUI closed. Re-runnable (removes its own items via owned_3.json). 
   NOTE: the jack lines J8.5/J8.2/J8.4 -> C19,R19 / R20,C20 / R23 and C25 (HP_DET) cross this band;
   J8 pads are THT, so section 4 leaves the jack pads on B.Cu (one via at the R/C end each).
 +5V branch (F.Cu 0.8): from (29.3,-54.04) down right of C15 -> diagonal -> x 26.2 (between the U6 cap column
-  and J4) -> east through the J4.1/J6.5 gap (y -32.55) -> x 30.5 south (right of J6) -> C22.1 stub (y -24),
-  JP1.1 tap (y -18.7), J5.8 (LCD). Section 5 continues from C22.1 / JP1.1 to C21 and U7 VDD (pins 7/8).
+  and J4) -> east through the J4.1/J6.5 gap (y -32.55) -> x 30.5 south (right of J6) -> JP1.1 tap (y -18.7),
+  J5.8 (LCD). Section 5 feeds C21/C22/U7 VDD from the branch corner (30.5,-17.6).
 +3V3: J1.1 -> C12.1 (AVDD cap, 0.4). J1.17 -> 45 deg through the plug zone (0.5) -> J6.1, then x 29.2 north
   -> via -> B.Cu 0.4 hop (under the +5V branch, SYS and the BST_EN lane) -> via west of C11 -> C11.1 -> U5.8.
   U5 SDA/SCL keep the lane between SYS (x 31.5) and the U5 pins free (SDA: pin 9 up to y -36.25, then west).
@@ -29,7 +29,7 @@ def build(b, R):
     # --- +5V branch toward the amp / LCD -------------------------------------------------------
     t(P5, 0.8, [(29.3, -54.04), (29.3, -46.0), (26.2, -42.9), (26.2, -32.55), (30.5, -32.55),
                 (30.5, -24.0), (30.5, -17.6), (27.7, -16.81)])
-    t(P5, 0.8, [(30.5, -24.0), (35.225, -24.0)])          # C22.1 stub (section 5 branch point)
+    # (the C22.1 stub y -24 was removed in section 5: U7's VDD pins face south, C21/C22 moved there)
     t(P5, 0.5, [(30.5, -18.7), (32.3, -18.7)])            # JP1.1 (gain jumper A = +5V)
     # --- +3V3: J1.1 -> C12 (AVDD cap) ----------------------------------------------------------
     t(P3, 0.4, [(6.49, -53.505), (7.6, -53.505), (8.6, -52.5), (12.0, -52.5), (12.0, -48.225),
