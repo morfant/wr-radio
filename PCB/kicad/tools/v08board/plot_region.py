@@ -10,7 +10,8 @@ ax.set_facecolor("#101010")
 for z in D["zones"]:
     c = "#2a4f9a" if z["layer"] == "B" else "#8a2a2a"
     for p in z["polys"]:
-        ax.add_patch(Polygon(p, closed=True, fc=c, ec="none", alpha=0.35 if z["layer"] == "B" else 0.55, zorder=1))
+        a = 0.3 if z["name"] in ("GND_F", "GND_B") else (0.35 if z["layer"] == "B" else 0.55)
+        ax.add_patch(Polygon(p, closed=True, fc=c, ec="none", alpha=a, zorder=1))
 for t in D["tracks"]:
     c = "#3f7fff" if t["layer"] == "B" else "#e03030"
     ptmm = fig.get_size_inches()[0] * 72 / (x1 - x0) * 0.93
@@ -22,7 +23,8 @@ for p in D["pads"]:
     for poly in p["poly"]:
         ax.add_patch(Polygon(poly, closed=True, fc=c, ec="k", lw=0.3, alpha=0.9, zorder=4))
 for v in D["vias"]:
-    ax.add_patch(Circle((v["x"], v["y"]), v["d"] / 2, fc="#c0c0c0", ec="k", lw=0.3, zorder=6))
+    gnd = v.get("net") == "GND"
+    ax.add_patch(Circle((v["x"], v["y"]), v["d"] / 2, fc="#40d040" if gnd else "#c0c0c0", ec="k", lw=0.3, zorder=6))
     ax.add_patch(Circle((v["x"], v["y"]), v["drill"] / 2, fc="#101010", zorder=7))
 for f in D["fps"]:
     for poly in f["crtyd"]:
