@@ -1,0 +1,10 @@
+[[46.9, -35.65, "CHG_DIS exit via (enclosed: continue on B.Cu to J1.22)", 30.5, -27.0],
+ [31.5, -40.0, "SYS -> J4.1 (lane x=30 kept free for BST_EN)", 29.0, -44.5],
+ [55.4, -47.8, "VBUS pin groups joined by B.Cu hop", 57.0, -55.5],
+ [56.0, -36.0, "LED/sense VBUS: B.Cu hop under CHRG/STDBY", 52.0, -25.0],
+ [43.6, -30.0, "VBUS -> R16 (VBUS_SENSE top)", 49.0, -22.5],
+ [37.7, -31.375, "BAT+ -> R14 (VBAT_SENSE top)", 29.5, -21.0],
+ [50.4, -17.8, "DW_VCC B.Cu hop", 57.0, -24.0],
+ [50.5, -18.0, "OD under U2 body", 56.5, -16.5],
+ [36.9, -36.0, "BAT+ trunk 1.5 mm", 29.5, -31.0],
+ [45.0, -43.6, "U1 EP: 6 vias", 40.0, -52.0]]
