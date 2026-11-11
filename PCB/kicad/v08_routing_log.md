@@ -19,6 +19,7 @@
 | 6. 일반 신호선 | **완료** (2026-11-12) | `route_6a_hand.py` → Freerouting(`route_6_prep_dsn.py`, `route_6_freerouting.rules/.ses`) → `route_6b_import_ses.py`, 전체 순서 `route_6_freerouting.sh` / `radio-hat-v08/route_6_signals.png` |
 | 7. GND 채우기 + 연결 비아 | **완료** (2026-11-12) | `tools/v08board/route_7_gnd.py` (비아 규칙 `route_7_vias.py`, 순서 `route_7_plan.py`, 점검 `route_7_check.py`) / `radio-hat-v08/route_7_gnd.png`, `render_top.png`, `render_bottom.png` |
 | 8. 마무리 | 다음 | DRC 0, 실크 정리, Fable 최종 검토 제안 |
+| 9. 검토 반영 | **완료** (2026-11-12) | `tools/v08board/fix_9.py` (+ `fix_9_silk.py`, 회로도 `fix_9_sch.py`) / `radio-hat-v08/render_top.png`, `render_bottom.png` |
 
 ## 구역 1 (부스트) 메모
 
@@ -143,3 +144,21 @@
   - GND_F 30 조각 중 24개는 비아/THT로 B에 묶임, 6개는 비아 자리가 없는 작은 조각(0.2~1.5 mm², GND 패드·선 하나에 붙은 것: J2 A1/B12 옆, J1 아래쪽 두 곳 (5~7, −7…−4), J6.5 옆 (28.4,−31.5), J1.6 옆 (4.7,−49), BST_GND_F 옆 (42,−57.6)) — 연결은 맞고 작아서 그대로 둠.
   - B.Cu 좁은 목 (`route_7_check.py`, 면을 r만큼 깎았다 되살려서 떨어지는 조각): 목 < 2 mm인 조각 3개 — J4 남쪽 SCL/BST_EN 건너가기 사이 (28.3–32.0, −40.4…−34.8) 14.6 mm² 비아 2, J1/J9 사이 UART·SDA·HP_DET 사이 (7.1–10.8, −43.8…−39.2) 11.1 mm² 비아 2, J6 핀 사이 문 선(SDA/BCLK/LRCLK) 사이 (28.7–31.4, −26.6…−24.5) 4.7 mm² 비아 0(자리 없음, 위 F.Cu GND가 덮음). 목 < 3 mm: J2(USB-C) 밑 (55.9–63.2, −51.7…−43.9) 44 mm² — 커넥터 밑이라 비아 안 놓음, J2 GND 패드는 F.Cu로 통째 연결. U7 서쪽 (28.1–34.0, −24.1…−16.8) 27.5 mm² 비아 1. 목 < 1 mm 조각 대부분은 J1 핀 사이 작은 칸(2.2 mm²)이라 의미 없음.
 - 도구: `plot_region.py`는 GND_F/GND_B를 반투명(0.3)으로, GND 비아를 초록으로 그림. `route_7_check.py [보드]` = 조각·섬·목 점검(파일은 안 바꿈).
+
+## 구역 9 (독립 검토 반영) 메모
+
+검토 문서 `v08_layout_review.md`의 MUST/SHOULD/NICE 항목을 반영했다. 옛 구역 스크립트는 다시 돌리지 않고, 고친 것만 `fix_9.py`가 맡는다.
+
+- 순서 (GUI 닫고): `python3 fix_9_sch.py`(시스템 python, 회로도 D2/D3 필드) → `fix_9.py`(KiCad python, 보드). `fix_9.py`는 (1) 바꿀 옛 항목(SW 선 전부, U1 EP 옛 비아 6개)을 위치로 찾아 지우고 (2) `owned_9.json`의 자기 항목을 지운 뒤 (3) 새 프로세스에서 다시 넣는다. 다시 돌려도 같은 결과(확인함). 새 동박은 모두 잠금. **구역 1~7 스크립트를 다시 돌리면 그 뒤에 `fix_9.py`도 다시 돌릴 것**(예: `route_2b_charger.py`는 EP 비아 6개를 다시 넣는다).
+- **M1 D3**: MHS190UGCT(1번 = 애노드) → **XINGLIGHT XL-1606UGC (C965863)**, D2 XL-1606SURC와 같은 시리즈. 두 데이터시트의 외형도가 같고(1.7×0.6×1.1, 1번 = −/캐소드, 같은 자리) 권장 패드도 같다(0.77×0.95, 간격 0.86). D2·D3 풋프린트를 로컬 `radio-hat-v08.pretty/LED_XINGLIGHT_XL-1606_Horizontal`(KiCad APA1606 사본, 패드만 0.77×0.95 / 중심 ±0.815)로 바꿈. 보드에서는 패드 크기·위치만 바꾸고 위치·회전·선은 그대로(선 끝이 패드 안).
+- **M2 J8**: easyeda2kicad로 받은 C16684 EasyEDA 풋프린트와 데이터시트 도면을 대조 → 단자 5개·슬롯 1.5×0.8·고정 구멍 Ø1.2 5개 위치 모두 일치(EasyEDA 좌표를 90° 돌리고 2.5 mm 옮긴 것과 같음, 차이 ≤ 0.01). 풋프린트는 바꾸지 않음. 원통: 돌출 3.0 mm(데이터시트·EasyEDA), 폭은 EasyEDA 실크 5.0 mm / 3D 모델 Ø6.0 / 데이터시트 ΦX → 케이스 구멍은 실물로 확정.
+- **S1 SYS**: F.Cu 존 `FIX9_SYS_F`(우선순위 3, SYS) — Q1.2 → y −49.5 통로 → C5.1 → C5 동쪽 → L1.2·D1 캐소드·C27까지(CHG_SYS_F를 덮음). 채움 46 mm², 가장 좁은 곳은 C5.2(GND) 위 1.05 mm, 나머지 1.65~3.75 mm(전에는 0.8 선). **B−**: 존 `FIX9_BM_F`(U3 2/3번 핀 오른쪽 + 1.2 줄기 따라 아래로, 11.4 mm²).
+- **S2 SW 목**: U4.5 → 0.25(핀 사이, 이웃 핀과 0.2) → y −54.3에서 0.35(위·아래 핀줄 모두 0.2, 넷 클래스 간격 0.2라서 0.44는 불가) → x 43.2부터 0.8 → L1.1. (전: 0.2 → 0.3 → x 43.3부터 0.8)
+- **S3 U1 EP**: 비아 6 → **12개**(4×3, 피치 0.85, 0.6/0.3, 구멍 간격 0.55). EP 3.3×2.41은 TOPPOWER 데이터시트 ESOP8 도면(약 3.3×2.4)과 맞음.
+- **S4 D1/Q1**: D1 캐소드 쪽은 S1 존(46 mm² + CHG 선), 애노드 쪽은 `FIX9_VBUS_F`(우선순위 3, D1 아래, 12 mm²) 추가. 목표 200 mm²에는 못 미침(위는 VBUS 띠·U1, 아래는 부스트 상자, 오른쪽은 J2). Q1 AO3401A는 그대로(JLC basic). 배터리 3.0 V·3 A 피크에서 약 0.2 V / 0.6 W(순간), 평균 1.5~2 A에서 0.15~0.25 W — 시제품에서 Q1·D1 온도 측정.
+- **S5 꿰매기**: HP_TN·DAC_R B.Cu 틈 옆 후보 16곳 중 규칙(`route_7_vias.Spots`: 양면 GND 채움 안, 패드 0.5, courtyard 밖, 기존 비아 1.0)을 만족한 3개만 추가: (11.2,−50.7), (23.2,−52.7), (24.6,−52.7). HP_TN 양옆은 C12/C19/R18/R23·기존 비아로 자리가 없음.
+- **N1 +3V3**: 프로젝트 `drc_exclusions`에 연결 안 됨 1건(+3V3 B.Cu 7.7 mm 선 ↔ F.Cu 5.0 mm 선)을 이유와 함께 등록 → kicad-cli 기본 DRC에서 연결 안 됨 0(`--severity-all`이면 excluded로 표시).
+- **N9 J9 라벨**: F면 GND/TX/RX(TX가 4 mm 떨어져 있던 것)를 지우고 **B.SilkS에 패드마다 바로 옆**(x 11.55~) GND / TX / RX. F면은 J9 실크 상자·R23·C12 때문에 패드 옆 자리가 없음.
+- **N10**: F.SilkS "DO NOT POWER PI VIA USB"(세로, x 12.4, J1 옆 플러그 공간). "1 SIDE ONLY"는 그대로.
+- 점검: 구리 관련 DRC 오류 0, 연결 안 됨 0(+3V3 1건 제외 등록), 회로도↔보드 불일치 0, ERC 오류 0(경고 1 = U7 EP, 전과 같음), 실크 경고 수는 전과 같음(silk_overlap 199, edge 71, over_copper 1). BOM 다시 뽑음(D2/D3 풋프린트, D3 LCSC/MPN만 바뀜, J9 빠짐 유지). 비아 177 → 186.
+

@@ -10826,7 +10826,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "LED_SMD:LED_Kingbright_APA1606_1.6x0.6mm_Horizontal"
+		(property "Footprint" "radio-hat-v08:LED_XINGLIGHT_XL-1606_Horizontal"
 			(at 175.26 68.58 0)
 			(effects
 				(font
@@ -11142,7 +11142,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "LED_SMD:LED_Kingbright_APA1606_1.6x0.6mm_Horizontal"
+		(property "Footprint" "radio-hat-v08:LED_XINGLIGHT_XL-1606_Horizontal"
 			(at 175.26 86.36 0)
 			(effects
 				(font
@@ -11169,7 +11169,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C409794"
+		(property "LCSC" "C965863"
 			(at 175.26 86.36 0)
 			(effects
 				(font
@@ -11178,7 +11178,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "MHS190UGCT"
+		(property "MPN" "XL-1606UGC"
 			(at 175.26 86.36 0)
 			(effects
 				(font

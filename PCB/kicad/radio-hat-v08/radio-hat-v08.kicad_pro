@@ -70,7 +70,12 @@
         }
       },
       "diff_pair_dimensions": [],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "unconnected_items|32299999|-38700000|f204e66f-f57f-4f36-9707-efb55bda4425|5ee7cd62-79df-46a3-aa6a-5b743783f294",
+          "+3V3 has two copper groups on the HAT: J1.1 side (U6, C12-C15, R18) and J1.17 side (C11, U5, J6.1). Both are Pi 3V3 pins, joined inside the Pi; no clean path on the board (v08_routing_log 6/7, review NICE-1)."
+        ]
+      ],
       "meta": {
         "version": 2
       },

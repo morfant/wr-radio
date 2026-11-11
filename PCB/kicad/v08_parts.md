@@ -179,8 +179,8 @@ Vout = 0.595 × (1 + R1/R2)
 
 | 참조 | 용도 | LCSC | 부품번호 (제조사) | 구분 | 재고 | 풋프린트 |
 |---|---|---|---|---|---|---|
-| D2 | CHRG 측면 발광 LED, 적색 | C965860 | XL-1606SURC (XINGLIGHT) | Ext | 약 22만 | LED_SMD:LED_Kingbright_APA1606_1.6x0.6mm_Horizontal |
-| D3 | STDBY 측면 발광 LED, 녹색 | C409794 | MHS190UGCT (MEIHUA) | Ext | 약 3.8천 | 같음 |
+| D2 | CHRG 측면 발광 LED, 적색 | C965860 | XL-1606SURC (XINGLIGHT) | Ext | 약 22만 | radio-hat-v08:LED_XINGLIGHT_XL-1606_Horizontal (2026-11-12, 전: LED_SMD:LED_Kingbright_APA1606) |
+| D3 | STDBY 측면 발광 LED, 녹색 | **C965863** (2026-11-12 변경, 전: C409794 MHS190UGCT) | **XL-1606UGC (XINGLIGHT)** | Ext | 약 19만 | 같음 |
 | J3 | 배터리 JST XH 옆꽂이 2핀 | C157931 | S2B-XH-A(LF)(SN) (JST) | Ext | 약 6.8만 | Connector_JST:JST_XH_S2B-XH-A_1x02_P2.50mm_Horizontal |
 | J7 | 스피커 라이트앵글 2핀 | C492410 | PZ254R-11-02P (XFCN) | Ext | 약 18만 | Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Horizontal |
 | J4 | 전원 스위치 라이트앵글 3핀 | C492411 | PZ254R-11-03P (XFCN) | Ext | 약 9.1만 | …PinHeader_1x03_P2.54mm_Horizontal |
@@ -190,8 +190,6 @@ Vout = 0.595 × (1 + R1/R2)
 | U1 | TP4056 (부품 같음 C16581) | — | 풋프린트만 변경 | — | — | Package_SO:SOIC-8-1EP_3.9x4.9mm_P1.27mm_EP2.41x3.3mm (비아 내장 버전 → 비아 없는 버전) |
 
 - 측면 발광 LED: JLC에 Basic 부품은 없음. 백색 측면 LED는 재고가 수십~백여 개(C710208 184개, C2922366 40개 등)뿐이라 **적색 + 녹색** 조합. 적색 XL-1606SURC: 1.7×0.6×1.1 mm, Vf 1.9~2.3V@20mA, 권장 패드 0.77×0.95 간격 0.86. 녹색 MHS190UGCT: 1.6×0.6(높이)×0.3 mm, Vf 2.5~2.9V@5mA, 180~360 mcd@5mA, 권장 패드 0.65×0.65 간격 0.8. 둘 다 KiCad `LED_Kingbright_APA1606`(패드 0.9×1.0, 중심 ±0.8)에 맞음.
-  - **극성 주의**: XL-1606SURC는 1번 = 캐소드(−), MHS190UGCT는 1번 = 애노드(+)로 데이터시트 번호가 반대. 풋프린트는 패드 1 = K(회로도 LED 심볼 1 = K)이므로 JLC 조립 미리보기에서 각 LED의 캐소드 표시가 패드 1 쪽인지 확인할 것.
-  - 대안: 같은 패키지 계열로 맞추려면 TOGIALED TJ-S3210SW5TGLC2R-A5(적, C273626, 6.5천) / ...G-A5(녹, C273630, 1.6천) — 3.2×1.5 3패드라 전용 풋프린트 필요.
-  - 직렬저항 R4/R5 1k(C21190 Basic) 그대로: 적 약 3.1 mA, 녹 약 2.3 mA.
-- 라이트앵글 헤더는 XFCN PZ254R 계열(핀 길이 6 mm, 몸체 2.5 mm). JST 정품 S2B-XH-A(LF)(SN)은 THT. 모두 THT라 JLC THT 조립을 쓰거나 손납땜. J9는 핀을 꽂지 않는 패드라 조립 대상 아님.
-- 새로 Extended가 늘어나는 종류: LED 2, J3 1(이전 B2B와 교체), 헤더 4(이전엔 LCSC 비움).
+  - (옛 내용, 2026-11-12 아래 변경으로 해소) **극성 주의**: XL-1606SURC는 1번 = 캐소드(−), MHS190UGCT는 1번 = 애노드(+)로 데이터시트 번호가 반대. 풋프린트는 패드 1 = K(회로도 LED 심볼 1 = K)이므로 JLC 조립 미리보기에서 각 LED의 캐소드 표시가 패드 1 쪽인지 확인할 것.
+  - **(2026-11-12 변경, 검토 M1)** D3를 D2와 같은 시리즈 **XL-1606UGC (C965863, 녹색 InGaN 525 nm, Vf 2.6~3.4V@20mA, 1.1 cd@20mA, 재고 약 19만)** 으로 교체. 두 데이터시트(C965860, C965863)의 외형도·핀 그림이 같다: 1.7×0.6×1.1, **1번 = −(캐소드)**, 권장 패드 0.77×0.95 간격 0.86. 그래서 D2·D3의 극성 기준이 같아지고, 풋프린트 패드 1 = K와 맞다. 같은 시리즈 다른 녹색 XL-1606SYGC(C965864, 570 nm 황록, 130 mcd, 재고 3.4만)는 어둡고 재고가 적어 뺐음. 녹색이 적색보다 밝다(약 2 mA에서 약 110 mcd vs 약 40 mcd) — 너무 밝으면 R5를 2k로.
+  - 풋프린트: 로컬 `radio-hat-v08.pretty/LED_XINGLIGHT_XL-1606_Horizontal`(KiCad APA1606 사본, 패드를 권장값 0.77×0.95 / 중심 ±0.815로). 렌즈 방향(풋프린트 −y)은 그대로이고, 주문 때 JLC 미리보기에서 두 LED 렌즈가 보드 가장자리(+x)를 보는지 한 번 더 확인.
