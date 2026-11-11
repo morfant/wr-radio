@@ -48,6 +48,7 @@ if len(sys.argv) > 4:
 for z in D["zones"]:
     if z["name"] and z["polys"]:
         xs = [p[0] for p in z["polys"][0]]; ys = [p[1] for p in z["polys"][0]]
+        if not (x0 < sum(xs) / len(xs) < x1 and y0 < min(ys) + 0.45 < y1): continue
         ax.text(sum(xs) / len(xs), min(ys) + 0.45, z["name"], color="#ffb0b0", fontsize=7, ha="center", zorder=11)
 ax.set_xlim(x0, x1); ax.set_ylim(y1, y0); ax.set_aspect("equal")
 ax.grid(True, color="#303030", lw=0.4)
