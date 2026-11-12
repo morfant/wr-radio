@@ -18603,10 +18603,6 @@
 			)
 		)
 	)
-	(no_connect
-		(at 360.68 157.48)
-		(uuid "9e3f2c45-55d7-567a-a01d-c2ae5efd8554")
-	)
 	(wire
 		(pts
 			(xy 294.64 152.4)
@@ -27282,6 +27278,222 @@
 			(justify left bottom)
 		)
 		(uuid "60d63a40-71df-4cbf-bb75-54aab74a3383")
+	)
+	(wire
+		(pts
+			(xy 360.68 157.48)
+			(xy 363.22 157.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e5a4fac6-e381-494b-808d-06d0b17b2178")
+	)
+	(label "BTN"
+		(at 363.22 157.48 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "5b1e12fd-ba79-4469-8ba9-a3e78a6e760a")
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x02")
+		(at 396.24 154.94 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp yes)
+		(uuid "1e272910-0eee-4632-808c-84f98e64a327")
+		(property "Reference" "J10"
+			(at 396.24 152.4 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BTN_EXT"
+			(at 396.24 161.29 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
+			(at 396.24 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 396.24 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "External button pads, no part fitted (1=BTN Pi GPIO4, 2=GND; Pi internal pull-up)"
+			(at 396.24 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "LCSC" ""
+			(at 396.24 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "MPN" ""
+			(at 396.24 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "e7ed8490-8aeb-4c4d-a45f-7f461c8b5fac")
+		)
+		(pin "2"
+			(uuid "221261d1-c359-4856-8a7e-d1ff5c240547")
+		)
+		(instances
+			(project "radio-hat-v08"
+				(path "/6b69aaf6-1094-5d34-9d42-29487523bd5a"
+					(reference "J10")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 391.16 154.94)
+			(xy 388.62 154.94)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2f9d8c7e-e0dd-4899-a10a-ab79af49a1a6")
+	)
+	(label "BTN"
+		(at 388.62 154.94 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "2742025d-8bc2-4841-ab62-e1158c4cf659")
+	)
+	(wire
+		(pts
+			(xy 391.16 157.48)
+			(xy 388.62 157.48)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0194317b-b32b-4e3f-8269-22c227f5f152")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 388.62 157.48 270)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(dnp no)
+		(uuid "8977c966-731d-48c3-a565-a414979dffda")
+		(property "Reference" "#PWR103"
+			(at 388.62 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 382.37 158.38 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 388.62 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 388.62 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 388.62 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "8dcd9918-d73a-4a0b-972f-fd4d0836e494")
+		)
+		(instances
+			(project "radio-hat-v08"
+				(path "/6b69aaf6-1094-5d34-9d42-29487523bd5a"
+					(reference "#PWR103")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(text "J10 button pads (DNP, no part fitted)\n1=BTN (Pi GPIO4, J1 pin 7) 2=GND\nSwitch to GND, Pi internal pull-up. 2026-11-12"
+		(exclude_from_sim no)
+		(at 370.84 125.73 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "cfed6181-d94f-4ff0-80c8-6bdb10519a8a")
 	)
 	(sheet_instances
 		(path "/"
