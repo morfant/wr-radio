@@ -24962,7 +24962,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "220pF"
+		(property "Value" "330pF"
 			(at 285.48 261.56 90)
 			(effects
 				(font
@@ -24998,7 +24998,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C1603"
+		(property "LCSC" "C1664"
 			(at 284.48 264.16 0)
 			(effects
 				(font
@@ -25007,7 +25007,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL10B221KB8NNNC"
+		(property "MPN" "CL10C331JB8NNNC"
 			(at 284.48 264.16 0)
 			(effects
 				(font
@@ -25148,7 +25148,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "220pF"
+		(property "Value" "330pF"
 			(at 285.48 269.18 90)
 			(effects
 				(font
@@ -25184,7 +25184,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C1603"
+		(property "LCSC" "C1664"
 			(at 284.48 271.78 0)
 			(effects
 				(font
@@ -25193,7 +25193,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "CL10B221KB8NNNC"
+		(property "MPN" "CL10C331JB8NNNC"
 			(at 284.48 271.78 0)
 			(effects
 				(font

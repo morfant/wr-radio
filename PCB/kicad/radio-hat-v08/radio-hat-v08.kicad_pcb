@@ -5674,7 +5674,7 @@
 				)
 			)
 		)
-		(property "Value" "220pF"
+		(property "Value" "330pF"
 			(at 0 1.43 270)
 			(layer "F.Fab")
 			(uuid "3c3fd52f-af92-4b05-8709-a4965bc3f6eb")
@@ -5719,7 +5719,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C1603"
+		(property "LCSC" "C1664"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -5732,7 +5732,7 @@
 				)
 			)
 		)
-		(property "MPN" "CL10B221KB8NNNC"
+		(property "MPN" "CL10C331JB8NNNC"
 			(at 0 0 270)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -10972,7 +10972,7 @@
 				)
 			)
 		)
-		(property "Value" "220pF"
+		(property "Value" "330pF"
 			(at 0 1.43 90)
 			(layer "F.Fab")
 			(uuid "2d6f19f4-b5c2-4962-a64d-db2a684a9e6b")
@@ -11017,7 +11017,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C1603"
+		(property "LCSC" "C1664"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -11030,7 +11030,7 @@
 				)
 			)
 		)
-		(property "MPN" "CL10B221KB8NNNC"
+		(property "MPN" "CL10C331JB8NNNC"
 			(at 0 0 90)
 			(unlocked yes)
 			(layer "F.Fab")
@@ -25227,7 +25227,7 @@
 		)
 	)
 	(gr_text "wr-radio v0.8 (2026.11)"
-		(at 47.599999 -24.8 0)
+		(at 62 -11 90)
 		(layer "F.SilkS")
 		(uuid "e806d09d-94bc-475e-b5d6-9150a8446443")
 		(effects
