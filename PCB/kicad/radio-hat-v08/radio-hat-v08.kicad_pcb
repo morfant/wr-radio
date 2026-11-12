@@ -17234,7 +17234,7 @@
 				)
 			)
 		)
-		(property "Value" "RED"
+		(property "Value" "BLUE"
 			(at 0 1.6 270)
 			(layer "F.Fab")
 			(uuid "cf53e31c-7fa9-4bc4-865a-5583a7c6c61b")
@@ -17283,7 +17283,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C965860"
+		(property "LCSC" "C965865"
 			(at 0 0 270)
 			(layer "F.SilkS")
 			(hide yes)
@@ -17295,7 +17295,7 @@
 				)
 			)
 		)
-		(property "MPN" "XL-1606SURC"
+		(property "MPN" "XL-1606UBC"
 			(at 0 0 270)
 			(layer "F.SilkS")
 			(hide yes)

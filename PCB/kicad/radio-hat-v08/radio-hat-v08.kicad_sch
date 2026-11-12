@@ -10817,7 +10817,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "RED"
+		(property "Value" "BLUE"
 			(at 176.26 65.98 0)
 			(effects
 				(font
@@ -10853,7 +10853,7 @@
 				(hide yes)
 			)
 		)
-		(property "LCSC" "C965860"
+		(property "LCSC" "C965865"
 			(at 175.26 68.58 0)
 			(effects
 				(font
@@ -10862,7 +10862,7 @@
 				(hide yes)
 			)
 		)
-		(property "MPN" "XL-1606SURC"
+		(property "MPN" "XL-1606UBC"
 			(at 175.26 68.58 0)
 			(effects
 				(font
